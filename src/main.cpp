@@ -8,6 +8,7 @@
 // - Introduction, links and more at the top of imgui.cpp
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
@@ -16,6 +17,15 @@
 #include <GLES2/gl2.h>
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
+
+extern "C" {
+#include <tiffio.h>
+#include <zlib.h>
+#include <jpeglib.h>
+}
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and compatibility with old VS compilers.
 // To link with VS2010-era libraries, VS2015+ requires linking with legacy_stdio_definitions.lib, which we do using this pragma.
@@ -34,8 +44,90 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
+    GLuint image_texture;
+    int image_width = 0;
+    int image_height = 0;
+
+GLuint LoadTIFF(const char* filename) {
+    boolean ok = false;
+     TIFF* tifin = TIFFOpen(filename, "r");
+     if (tifin) {
+        tdir_t ndirectories = TIFFNumberOfDirectories(tifin);
+            if (TIFFIsTiled(tifin)) {
+              TIFFSetDirectory(tifin, 0);
+              unsigned int ntiles = TIFFNumberOfTiles(tifin);
+              unsigned int tilewidth;
+              unsigned int tileheight;
+              unsigned int imagewidth;
+              unsigned int imageheight;
+              uint16_t bits_per_sample;
+              int16_t samples_per_pixel;
+              TIFFGetField(tifin, TIFFTAG_IMAGEWIDTH, &imagewidth);
+              TIFFGetField(tifin, TIFFTAG_IMAGELENGTH, &imageheight);
+              TIFFGetField(tifin, TIFFTAG_TILEWIDTH, &tilewidth);
+              TIFFGetField(tifin, TIFFTAG_TILELENGTH, &tileheight);
+              TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+              TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
+
+            unsigned int column = 0; 
+            unsigned int row = 0;
+              unsigned char* data = new unsigned char[tilewidth * tileheight * 4];
+             ok = TIFFReadRGBATile(tifin, column * tilewidth, row * tileheight, (uint32_t*)data) == 1;
+             // TIFFReadRGBATile returns upside-down data...
+                        uint32_t* top = (uint32_t*)data;
+                        uint32_t* bottom = (uint32_t*)(data + (tileheight - 1) * tilewidth * 4);
+                        for (unsigned int yy = 0;  yy < tileheight / 2; ++yy) {
+                          for (unsigned int xx = 0; xx < tilewidth; ++xx) {
+                            uint32_t temp = top[xx];
+                            top[xx] = bottom[xx];
+                            bottom[xx] = temp;
+                          }
+                          top += tilewidth;
+                          bottom -= tilewidth;
+                        }
+            //  for (unsigned r = 0; r < tileheight; ++r) {
+            //     unsigned char* startrow = data + r *  4 * tilewidth;
+            //     for (unsigned int c = 0; c  < tilewidth; ++c) {
+            //         memset(startrow + c * 4 + 0, c % 256, 1);
+            //     memset(startrow + c * 4 + 1, r % 256, 1);
+            //     memset(startrow + c * 4 + 2, (r + c)  % 256, 1);
+            //     memset(startrow + c * 4 + 3, 255, 1);
+
+            //     }
+            //  }
+             
+            image_height = tileheight;
+             image_width = tilewidth;
+   //         stbi_write_png("toto.png", image_width, image_height, 4, data, 0);
+             if (ok) { // create a texture
+                glGenTextures(1, &image_texture);
+                glBindTexture(GL_TEXTURE_2D, image_texture);
+             glBindTexture(GL_TEXTURE_2D, image_texture);
+
+                // Setup filtering parameters for display
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+               glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+        // Upload pixels into texture
+    #if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    #endif
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tilewidth, tileheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+ 
+        }
+        delete [] data;
+     }
+
+}
+TIFFClose(tifin);
+     return ok;
+}
+
+
 // Main code
-int main(int, char**)
+int main(int argc, char** argv)
 {
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -65,7 +157,7 @@ int main(int, char**)
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "qshowtiff", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
@@ -107,10 +199,14 @@ int main(int, char**)
     //IM_ASSERT(font != nullptr);
 
     // Our state
-    bool show_demo_window = true;
+    bool show_demo_window = false;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+bool imageLoaded = false;
+    // load sample image
+ if (argc > 1) 
+    imageLoaded = LoadTIFF(argv[1]);
     // Main loop
 #ifdef __EMSCRIPTEN__
     // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
@@ -148,20 +244,24 @@ int main(int, char**)
                 }
                 ImGui::EndMainMenuBar();
             }
-              const ImGuiViewport *viewport = ImGui::GetMainViewport();
+            ImGuiViewport *viewport = ImGui::GetMainViewport();
 
 
             if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, height, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
                 if (ImGui::BeginMenuBar()) {
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+           ImGui::Text(" %d x %d", image_width, image_height);
                     ImGui::EndMenuBar();
                 }
                 ImGui::End();
             }
 
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+            ImGui::Begin("Tile 0/0!");                          // Create a window called "Hello, world!" and append into it.
+            if (imageLoaded)
+          //  ImGui::Text(" %d x %d", image_width, image_height);
+                ImGui::Image((void*)image_texture, ImVec2(image_width, image_height));
 
-               ImGui::End();
+           ImGui::End();
         }
 
         // 3. Show another simple window.
