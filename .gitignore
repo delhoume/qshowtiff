@@ -6,3 +6,4 @@ src/qshowtiff
 *.o
 src/imgui.ini
 src/qshowtiff
+src/imgui.ini
