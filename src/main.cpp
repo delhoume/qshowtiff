@@ -251,7 +251,52 @@ static void RedirectErrors(const char* module, const char* fmt, va_list ap) {
   vsnprintf(errorbuffer, 1024, fmt, ap);
 }
  
-// Main code
+void showTexture(GLFWwindow* window, GLuint textureId) {
+    int wwidth, wheight;
+    glfwGetFramebufferSize(window, &wwidth, &wheight);
+ //   glViewport(0, 0, wwidth, wheight);
+ glMatrixMode(GL_PROJECTION);
+    glPushMatrix();    
+    glLoadIdentity(); 
+    glOrtho(0, wwidth, 0, wheight, -1.0f, +1.0f);
+     glMatrixMode(GL_MODELVIEW) ;   
+    glPushMatrix();            
+    glLoadIdentity();  
+    glTranslatef(0.375, 0.375, 0) ;       
+   glEnable(GL_TEXTURE_2D);
+     glBindTexture(GL_TEXTURE_2D, textureId);
+     glDisable(GL_CULL_FACE);
+   const float x0 = 100.0;
+    const float x1 = wwidth;
+    const float y0 = 100.0;
+    const float y1 = wheight;
+
+    const float u0 = 0.0;
+    const float u1 = 1.0;
+    const float v0 = 0.0;
+    const float v1 = 1.0;
+
+    glBegin(GL_QUADS);
+   glTexCoord2f(u0, v0);
+    glVertex2f(x0, y0);
+   glTexCoord2f(u1, v0);
+     glVertex2f(x0, y1);
+     glTexCoord2f(u1, v1);
+    glVertex2f(x1, y1);
+    glTexCoord2f(u0, v1);
+   glVertex2f(x1, y0);
+     glEnd();
+
+    glBegin( GL_POINTS );
+           glVertex2i( 50, 50 );
+     glEnd();
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+ 
+}
+
 int main(int argc, char **argv) {
    TIFFSetWarningHandler(RedirectErrors);
     TIFFSetErrorHandler(RedirectErrors);
@@ -283,7 +328,7 @@ int main(int argc, char **argv) {
 #endif
 
     // Create window with graphics context
-    GLFWwindow *window = glfwCreateWindow(2048, 1440, "qshowtiff  / F. Delhoume / 2024", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(1024, 1024, "qshowtiff  / F. Delhoume / 2024", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
@@ -328,88 +373,105 @@ int main(int argc, char **argv) {
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
-        // Start the Dear ImGui frame
+          // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
+
+
+
+          ImGuiViewport *viewport = ImGui::GetMainViewport();
+        float fheight = ImGui::GetFrameHeight();
         ImGui::NewFrame();
+        if (ImGui::BeginMainMenuBar()) {
+                if (ImGui::BeginMenu("File")) {
+                    ImGui::MenuItem("Open...", nullptr, false, true);
+                    ImGui::EndMenu();
+                }
+             ImGui::EndMainMenuBar();
+        }
+        bool show_demo_window = texture == 0;
+        if (show_demo_window)
+            ImGui::ShowDemoWindow(&show_demo_window);
 
-        // main window
-        {
-            float fheight = ImGui::GetFrameHeight();
-
-            // if (ImGui::BeginMainMenuBar()) {
-            //     if (ImGui::BeginMenu("Menu")) {
-            //         ImGui::MenuItem("Main menu bar", nullptr, false, true);
-            //         ImGui::EndMenu();
-            //     }
-            //     ImGui::EndMainMenuBar();
-            // }
-            ImGuiViewport *viewport = ImGui::GetMainViewport();
-
+        if (texture) { 
             int wwidth, wheight;
             glfwGetWindowSize(window, &wwidth, &wheight);
-            ImGui::SetNextWindowSize(ImVec2(wwidth, wheight - fheight)); // ensures ImGui fits the GLFW window
-            ImGui::SetNextWindowPos(ImVec2(0, 0));
-
+                ImGui::SetNextWindowSize(ImVec2(wwidth, wheight - fheight)); // ensures ImGui fits the GLFW window
+                ImGui::SetNextWindowPos(ImVec2(0, 0)); 
+        // main window
             ImGui::Begin(filename ? filename : "...");
-            if (mytiff)  {
                 boolean update = false;
-                if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1)) {
+                static char buffer_dir[16];
+                snprintf(buffer_dir, 16, "%%d / %d", mytiff->directories);
+                if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1, buffer_dir)) {
                     mytiff->setDirectory(current_dir);
                     current_column = 0;
                     current_row = 0;
                     update = true;
                 } 
-                if (mytiff->is_tiled && ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1)) update = true;
-                if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1))  update = true;
+                if (mytiff->is_tiled) {
+                    static char buffer_col[16];
+                    snprintf(buffer_col, 16, "%%d / %d", mytiff->image_columns);
+                    if (ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1, buffer_col)) {
+                    update = true;
+                }
+                static char buffer_row[16];
+                snprintf(buffer_row, 16, "%%d / %d", mytiff->image_rows);
+                if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1, buffer_row))  update = true;
                 if (update && texture) {
-       //            glDeleteTextures(1, &texture);
-                    texture = mytiff->load(current_dir, current_column, current_row);
-    
+                        glDeleteTextures(1, &texture);
+                        errorbuffer[0] = 0;
+                        texture = mytiff->load(current_dir, current_column, current_row);  
                 }
-                if (mytiff && texture) {
-                       int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
-                        if (final_width <= min_width) final_width = min_width;
-                        int final_height = mytiff->tile_height > max_height ? max_height : mytiff->tile_height;
-                        if (final_height <= min_height) final_height = min_height;
+                if (texture) {
+                    int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
+                    if (final_width <= min_width) final_width = min_width;
+                    int final_height = mytiff->tile_height > max_height ? max_height : mytiff->tile_height;
+                    if (final_height <= min_height) final_height = min_height;
 
-                 ImGui::Image((void *)(intptr_t)texture, ImVec2(final_width, final_height));
-                }
-           }
+                    ImVec2 avail_size = ImGui::GetContentRegionAvail();
+                    ImVec2 pos = ImGui::GetCursorScreenPos();
+                    pos.x += ImCeil(ImMax(0.0f, (avail_size.x - final_width) * 0.5f));
+                    pos.y += ImCeil(ImMax(0.0f, (avail_size.y - final_height) * 0.5f));
+                    ImGui::SetCursorScreenPos(pos);
+                    ImGui::Image((void *)(intptr_t)texture, ImVec2(final_width, final_height));
+            }
             ImGui::End();
-
-            if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, 20, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar))
-            {
-                if (ImGui::BeginMenuBar())  {
-                    //           ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-                    if (mytiff) {
-                        if (mytiff->is_tiled) {
-                           ImGui::Text("directories: %d - tilesize: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
-                           ImGui::Text(" / directory: %d - dimensions: %d x %d - tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
-                        }
-                        else {
-                           ImGui::Text("directories: %d - strip height: %d", mytiff->directories, mytiff->tile_height);
-                           ImGui::Text(" / directory: %d - dimensions: %d x %d - strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
-                        }
-                       ImGui::Text(" | %s", errorbuffer);
-                        ImGui::EndMenuBar();
+                }
+        }
+        if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, 20, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
+            if (ImGui::BeginMenuBar())  {
+                //           ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+                if (texture) {
+                    if (mytiff->is_tiled) {
+                        ImGui::Text("directories: %d - tilesize: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
+                        ImGui::Text(" / directory: %d - dimensions: %d x %d - tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
+                    }
+                    else {
+                        ImGui::Text("directories: %d - strip height: %d", mytiff->directories, mytiff->tile_height);
+                        ImGui::Text(" / directory: %d - dimensions: %d x %d - strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
                     }
                 }
-                ImGui::End();
+                if (errorbuffer[0]) ImGui::Text("%s", errorbuffer);
+                ImGui::EndMenuBar();
             }
+            ImGui::End();
+        }
+
+        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+     if (texture) showTexture(window, texture);
 
         // Rendering
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-
+ 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
-    }
+    
 #ifdef __EMSCRIPTEN__
     EMSCRIPTEN_MAINLOOP_END;
 #endif

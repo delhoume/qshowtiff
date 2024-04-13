@@ -7,3 +7,5 @@ src/qshowtiff
 src/imgui.ini
 src/qshowtiff
 src/imgui.ini
+src/imgui.ini
+*.o

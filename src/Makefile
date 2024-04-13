@@ -28,7 +28,7 @@ TIFF_LIBS = -ltiff -lturbojpeg -lz-ng -lzlibstatic -lzstd -llzma
 
 
 CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
-CXXFLAGS += -g -Wall -Wformat
+CXXFLAGS += -O4 -Wall -Wformat
 LIBS +=
 
 ##---------------------------------------------------------------------
