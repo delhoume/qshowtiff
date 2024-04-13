@@ -1,3 +1,8 @@
 
 *.o
 src/qshowtiff
+/src/debug
+*.o
+*.o
+src/imgui.ini
+src/qshowtiff
