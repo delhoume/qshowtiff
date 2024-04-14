@@ -18,7 +18,7 @@
 #include <GLES2/gl2.h>
 #endif
 
-
+#include "space_font.h"
 
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
@@ -153,6 +153,9 @@ static GLuint DataToTexture(unsigned char* data, int width, int height) {
     int final_height = height > max_height ? max_height : height;
     if (final_height <= min_height) final_height = min_height;
 
+// set alpha to 1 as loadRGBAX seems to fill hidden pixels with 0
+//     for (unsigned int p = 0; p < (width * height); ++p)
+//         data[4 * p + 3] = 255;
     unsigned char* newdata = new unsigned char[final_width * final_height * 4];
     stbir_resize_uint8_linear(data, width, height, 0, newdata, final_width, final_height, 0, (stbir_pixel_layout)4);
     delete [] data;
@@ -191,11 +194,11 @@ GLuint MyTiff::load(int directory, int column, int row) {
  boolean ok = false;
   if (!setDirectory(directory))
         return 0;
-   if (is_tiled) ok = loadTile(&data, directory, column, row);
-   else ok = loadStrip(&data, directory, row);
-    if (!ok)  {
+  if (is_tiled) ok = loadTile(&data, directory, column, row);
+  else ok = loadStrip(&data, directory, row);
+   if (!ok)  {
         ok = loadFake(&data, directory, column, row);
-    }
+   }
     if (debug_load_tiff && data)    {
         char buffer[128];
         snprintf(buffer, 128, "debug/directory_%.2d_column_%.4d_row_%.4d.jpg", directory, column, row);
@@ -316,12 +319,12 @@ int main(int argc, char **argv) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
 
-    const int font_size = 30;
-    io.Fonts->AddFontFromFileTTF("space_invaders.ttf", font_size);
+    const int font_size = 24;
+    io.Fonts->AddFontFromMemoryCompressedTTF(space_font_compressed_data, space_font_compressed_size, font_size);
 
     // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    // ImGui::StyleColorsLight();
+    //ImGui::StyleColorsDark();
+     ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
