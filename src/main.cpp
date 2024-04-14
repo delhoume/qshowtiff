@@ -10,12 +10,16 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_glfw.h"
+
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
 #endif
+
+
+
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
 extern "C" {
@@ -23,6 +27,7 @@ extern "C" {
 #include <zlib.h>
 #include <jpeglib.h>
 }
+
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -174,6 +179,11 @@ boolean MyTiff::loadFake(unsigned char** datain, int directory , int column, int
         return true;
 }
 
+static char errorbuffer[1024] = { 0 };
+
+static void RedirectErrors(const char* module, const char* fmt, va_list ap) {
+  vsnprintf(errorbuffer, 1024, fmt, ap);
+}
 
 boolean debug_load_tiff = false;
 GLuint MyTiff::load(int directory, int column, int row) {
@@ -227,9 +237,17 @@ boolean MyTiff::loadTile(unsigned char** datain, int directory, int column, int 
   if (column >= image_columns || row >= image_rows)
      return 0;
     unsigned char *data = *datain ?  *datain : new unsigned char[tile_width * tile_height * 4]; 
+    if (!data) {
+         snprintf(errorbuffer, 1024, "Tile: error allocating %d bytes", tile_width * tile_height * 4);
+         return 0;
+    }
     boolean ok = TIFFReadRGBATile(tifin, column * tile_width, row * tile_height, (uint32_t *)data) == 1;
          // TIFFReadRGBATile returns upside-down data...
-   if (ok) ::SwapVertical(data, tile_width, tile_height);
+    if (!ok) {
+         snprintf(errorbuffer, 1024, "Error reading tile %d %d", column, row);
+          return 0;
+    }
+    ::SwapVertical(data, tile_width, tile_height);
     *datain = data;
     return ok;
 }
@@ -239,62 +257,18 @@ boolean MyTiff::loadStrip(unsigned char** datain, int directory, int row) {
     if (directory >= directories || row >= image_rows)
         return 0;
     unsigned char *data = *datain ?  *datain : new unsigned char[tile_width * tile_height * 4];
+   if (!data) {
+         snprintf(errorbuffer, 1024, "Strip: error allocating %d bytes", tile_width * tile_height * 4);
+return 0;
+    }
     boolean ok = TIFFReadRGBAStrip(tifin, row * tile_height, (uint32_t *)data) == 1;
-    if (ok) ::SwapVertical(data, tile_width, tile_height);
+  if (!ok) {
+         snprintf(errorbuffer, 1024, "Error reading strip %d", row);
+          return 0;
+    }
+    SwapVertical(data, tile_width, tile_height);
     *datain = data;
     return ok;
-}
-
-static char errorbuffer[1024] = { 0 };
-
-static void RedirectErrors(const char* module, const char* fmt, va_list ap) {
-  vsnprintf(errorbuffer, 1024, fmt, ap);
-}
- 
-void showTexture(GLFWwindow* window, GLuint textureId) {
-    int wwidth, wheight;
-    glfwGetFramebufferSize(window, &wwidth, &wheight);
- //   glViewport(0, 0, wwidth, wheight);
- glMatrixMode(GL_PROJECTION);
-    glPushMatrix();    
-    glLoadIdentity(); 
-    glOrtho(0, wwidth, 0, wheight, -1.0f, +1.0f);
-     glMatrixMode(GL_MODELVIEW) ;   
-    glPushMatrix();            
-    glLoadIdentity();  
-    glTranslatef(0.375, 0.375, 0) ;       
-   glEnable(GL_TEXTURE_2D);
-     glBindTexture(GL_TEXTURE_2D, textureId);
-     glDisable(GL_CULL_FACE);
-   const float x0 = 100.0;
-    const float x1 = wwidth;
-    const float y0 = 100.0;
-    const float y1 = wheight;
-
-    const float u0 = 0.0;
-    const float u1 = 1.0;
-    const float v0 = 0.0;
-    const float v1 = 1.0;
-
-    glBegin(GL_QUADS);
-   glTexCoord2f(u0, v0);
-    glVertex2f(x0, y0);
-   glTexCoord2f(u1, v0);
-     glVertex2f(x0, y1);
-     glTexCoord2f(u1, v1);
-    glVertex2f(x1, y1);
-    glTexCoord2f(u0, v1);
-   glVertex2f(x1, y0);
-     glEnd();
-
-    glBegin( GL_POINTS );
-           glVertex2i( 50, 50 );
-     glEnd();
-
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
- 
 }
 
 int main(int argc, char **argv) {
@@ -343,8 +317,7 @@ int main(int argc, char **argv) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
 
     const int font_size = 30;
-    ImFont* space_invaders_font = io.Fonts->AddFontFromFileTTF("space_invaders.ttf",font_size);
-    ImFont* pixel_invaders_font = io.Fonts->AddFontFromFileTTF("pixel_invaders.ttf", font_size);
+    io.Fonts->AddFontFromFileTTF("space_invaders.ttf", font_size);
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -367,7 +340,6 @@ int main(int argc, char **argv) {
      MyTiff *mytiff = filename ? new MyTiff(filename) : nullptr;
     GLuint texture = mytiff ? mytiff->load(current_dir, current_column, current_row) : 0;
 
-
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         // Poll and handle events (inputs, window resize, etc.)
@@ -376,77 +348,70 @@ int main(int argc, char **argv) {
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
-
           // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
 
-
-
-          ImGuiViewport *viewport = ImGui::GetMainViewport();
+     ImGuiViewport *viewport = ImGui::GetMainViewport();
         float fheight = ImGui::GetFrameHeight();
         ImGui::NewFrame();
-   //     ImGui::PushFont(pixel_invaders_font);
-        if (ImGui::BeginMainMenuBar()) {
-                if (ImGui::BeginMenu("File")) {
-                    ImGui::MenuItem("Open...", nullptr, false, true);
-                    ImGui::EndMenu();
-                }
-             ImGui::EndMainMenuBar();
-        }
+
+    
         bool show_demo_window = texture == 0;
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
-        if (texture) { 
-            int wwidth, wheight;
+        if (true) {
+          int wwidth, wheight;
             glfwGetWindowSize(window, &wwidth, &wheight);
                 ImGui::SetNextWindowSize(ImVec2(wwidth, wheight - fheight)); // ensures ImGui fits the GLFW window
-                ImGui::SetNextWindowPos(ImVec2(0, 0)); 
-        // main window
-            ImGui::Begin(filename ? filename : "...");
-                boolean update = false;
-                 if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1)) {
-                    mytiff->setDirectory(current_dir);
-                    current_column = 0;
-                    current_row = 0;
-                    update = true;
-                } 
-                if (mytiff->is_tiled) {
-                    if (ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1)) {
-                    update = true;
-                }
-                }
-                 if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1))  update = true;
-                if (update && texture) {
-                        glDeleteTextures(1, &texture);
-                        errorbuffer[0] = 0;
-                        texture = mytiff->load(current_dir, current_column, current_row);  
-                }
-                // tile info
-                if (mytiff->is_tiled) {
-                    ImGui::Text("Directories: %d - Tilesizes: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
-                  ImGui::Text("Directory: %d - Dimensions: %d x %d - Tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
-                   ImGui::Text("Tile: %d, %d -> %d, %d", current_column, current_row, current_column * mytiff->tile_width, current_row * mytiff->tile_height);
-                } else {
-                     ImGui::Text("Directories: %d - Strip height: %d", mytiff->directories, mytiff->tile_height);
-                    ImGui::Text("Directory: %d - Dimensions: %d x %d - Strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
-                  ImGui::Text("Strip: %d -> 0, %d", current_row, current_row * mytiff->tile_height);   
-                }
-                if (texture) {
-                    int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
-                    if (final_width <= min_width) final_width = min_width;
-                    int final_height = mytiff->tile_height > max_height ? max_height : mytiff->tile_height;
-                    if (final_height <= min_height) final_height = min_height;
-
-                    ImVec2 avail_size = ImGui::GetContentRegionAvail();
-                    ImVec2 pos = ImGui::GetCursorScreenPos();
-                    pos.x += ImCeil(ImMax(0.0f, (avail_size.x - final_width) * 0.5f));
-                    pos.y += ImCeil(ImMax(0.0f, (avail_size.y - final_height) * 0.5f));
-                    ImGui::SetCursorScreenPos(pos);
-                    ImGui::Image((void *)(intptr_t)texture, ImVec2(final_width, final_height));
+                ImGui::SetNextWindowPos(ImVec2(0, 0));               
+     if (texture) { 
+         // main window
+         bool opened = false;
+              ImGui::Begin(filename ? filename : "...", &opened, ImGuiWindowFlags_NoResize);
+            boolean update = false;
+            if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1)) {
+                mytiff->setDirectory(current_dir);
+                current_column = 0;
+                current_row = 0;
+                update = true;
+            } 
+            if (mytiff->is_tiled) {
+                if (ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1)) {
+                update = true;
             }
-            ImGui::End();
+            }
+            if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1))  update = true;
+            if (update && texture) {
+                    glDeleteTextures(1, &texture);
+                    errorbuffer[0] = 0;
+                    texture = mytiff->load(current_dir, current_column, current_row);  
+            }
+            // tile info
+            if (mytiff->is_tiled) {
+                ImGui::Text("Directories: %d - Tilesizes: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
+                ImGui::Text("Directory: %d - Dimensions: %d x %d - Tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
+                ImGui::Text("Tile: %d, %d -> %d, %d", current_column, current_row, current_column * mytiff->tile_width, current_row * mytiff->tile_height);
+            } else {
+                ImGui::Text("Directories: %d - Strip height: %d", mytiff->directories, mytiff->tile_height);
+                ImGui::Text("Directory: %d - Dimensions: %d x %d - Strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
+                ImGui::Text("Strip: %d -> 0, %d", current_row, current_row * mytiff->tile_height);   
+            }
+            if (texture) {
+                int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
+                if (final_width <= min_width) final_width = min_width;
+                int final_height = mytiff->tile_height > max_height ? max_height : mytiff->tile_height;
+                if (final_height <= min_height) final_height = min_height;
+
+                ImVec2 avail_size = ImGui::GetContentRegionAvail();
+                ImVec2 pos = ImGui::GetCursorScreenPos();
+                pos.x += ImCeil(ImMax(0.0f, (avail_size.x - final_width) * 0.5f));
+                pos.y += ImCeil(ImMax(0.0f, (avail_size.y - final_height) * 0.5f));
+                ImGui::SetCursorScreenPos(pos);
+               ImGui::Image((void *)(intptr_t)texture, ImVec2(final_width, final_height));
+            }
+             ImGui::End();   
         }
         if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, fheight, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
            if (ImGui::BeginMenuBar())  {
@@ -455,11 +420,10 @@ int main(int argc, char **argv) {
             }
             ImGui::End();
         }
-
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-     if (texture) showTexture(window, texture);
-
+    }
+   glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w); 
+   glClear(GL_COLOR_BUFFER_BIT);
+ 
         // Rendering
         ImGui::Render();
         int display_w, display_h;

@@ -16,9 +16,13 @@
 
 EXE = qshowtiff
 IMGUI_DIR = ../imgui
+GLAD_DIR = ../glad
+
 SOURCES = main.cpp
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backends/imgui_impl_glfw.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+SOURCES += $(GFLAD_DIR)/src/glad.c
+
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 UNAME_S := $(shell uname -s)
 LINUX_GL_LIBS = -lGL
@@ -26,8 +30,7 @@ LINUX_GL_LIBS = -lGL
 TIFF_LIBS = -ltiff -lturbojpeg -lz-ng -lzlibstatic -lzstd -llzma
 
 
-
-CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
+CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(GLAD_DIR)/include
 CXXFLAGS += -g -Wall -Wformat
 LIBS +=
 
@@ -82,6 +85,10 @@ endif
 
 %.o:$(IMGUI_DIR)/backends/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.o:$(GLAD_DIR)/src/glad.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 
 all: $(EXE)
 	@echo Build complete for $(ECHO_MESSAGE)
