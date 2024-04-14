@@ -342,6 +342,10 @@ int main(int argc, char **argv) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
 
+    const int font_size = 30;
+    ImFont* space_invaders_font = io.Fonts->AddFontFromFileTTF("space_invaders.ttf",font_size);
+    ImFont* pixel_invaders_font = io.Fonts->AddFontFromFileTTF("pixel_invaders.ttf", font_size);
+
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     // ImGui::StyleColorsLight();
@@ -382,6 +386,7 @@ int main(int argc, char **argv) {
           ImGuiViewport *viewport = ImGui::GetMainViewport();
         float fheight = ImGui::GetFrameHeight();
         ImGui::NewFrame();
+   //     ImGui::PushFont(pixel_invaders_font);
         if (ImGui::BeginMainMenuBar()) {
                 if (ImGui::BeginMenu("File")) {
                     ImGui::MenuItem("Open...", nullptr, false, true);
@@ -401,27 +406,32 @@ int main(int argc, char **argv) {
         // main window
             ImGui::Begin(filename ? filename : "...");
                 boolean update = false;
-                static char buffer_dir[16];
-                snprintf(buffer_dir, 16, "%%d / %d", mytiff->directories);
-                if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1, buffer_dir)) {
+                 if (ImGui::SliderInt("Directory", &current_dir, 0, mytiff->directories - 1)) {
                     mytiff->setDirectory(current_dir);
                     current_column = 0;
                     current_row = 0;
                     update = true;
                 } 
                 if (mytiff->is_tiled) {
-                    static char buffer_col[16];
-                    snprintf(buffer_col, 16, "%%d / %d", mytiff->image_columns);
-                    if (ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1, buffer_col)) {
+                    if (ImGui::SliderInt("Column", &current_column, 0, mytiff->image_columns - 1)) {
                     update = true;
                 }
-                static char buffer_row[16];
-                snprintf(buffer_row, 16, "%%d / %d", mytiff->image_rows);
-                if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1, buffer_row))  update = true;
+                }
+                 if (ImGui::SliderInt("Row", &current_row, 0, mytiff->image_rows - 1))  update = true;
                 if (update && texture) {
                         glDeleteTextures(1, &texture);
                         errorbuffer[0] = 0;
                         texture = mytiff->load(current_dir, current_column, current_row);  
+                }
+                // tile info
+                if (mytiff->is_tiled) {
+                    ImGui::Text("Directories: %d - Tilesizes: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
+                  ImGui::Text("Directory: %d - Dimensions: %d x %d - Tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
+                   ImGui::Text("Tile: %d, %d -> %d, %d", current_column, current_row, current_column * mytiff->tile_width, current_row * mytiff->tile_height);
+                } else {
+                     ImGui::Text("Directories: %d - Strip height: %d", mytiff->directories, mytiff->tile_height);
+                    ImGui::Text("Directory: %d - Dimensions: %d x %d - Strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
+                  ImGui::Text("Strip: %d -> 0, %d", current_row, current_row * mytiff->tile_height);   
                 }
                 if (texture) {
                     int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
@@ -437,22 +447,10 @@ int main(int argc, char **argv) {
                     ImGui::Image((void *)(intptr_t)texture, ImVec2(final_width, final_height));
             }
             ImGui::End();
-                }
         }
-        if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, 20, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
-            if (ImGui::BeginMenuBar())  {
-                //           ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-                if (texture) {
-                    if (mytiff->is_tiled) {
-                        ImGui::Text("directories: %d - tilesize: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
-                        ImGui::Text(" / directory: %d - dimensions: %d x %d - tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
-                    }
-                    else {
-                        ImGui::Text("directories: %d - strip height: %d", mytiff->directories, mytiff->tile_height);
-                        ImGui::Text(" / directory: %d - dimensions: %d x %d - strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
-                    }
-                }
-                if (errorbuffer[0]) ImGui::Text("%s", errorbuffer);
+        if (ImGui::BeginViewportSideBar("StatusBar", viewport, ImGuiDir_Down, fheight, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
+           if (ImGui::BeginMenuBar())  {
+                ImGui::Text("%s", errorbuffer);
                 ImGui::EndMenuBar();
             }
             ImGui::End();
