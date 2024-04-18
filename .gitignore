@@ -10,3 +10,5 @@ src/imgui.ini
 src/imgui.ini
 *.o
 *.o
+bin/qshowtiff
+imgui
