@@ -53,8 +53,10 @@ static void glfw_error_callback(int error, const char *description) {
 struct MyTiff {
     TIFF *tifin;
     unsigned int directories;
-    uint16_t bits_per_sample;
-    int16_t samples_per_pixel;
+    int32_t bits_per_sample;
+    int32_t samples_per_pixel;
+    int32_t compression;
+    int32_t compression_level;
     boolean is_tiled;
     unsigned int tile_width;
     unsigned int tile_height;   // also strip_height;
@@ -63,7 +65,7 @@ struct MyTiff {
     unsigned int image_height;
     unsigned int image_columns;
     unsigned int image_rows;
-
+  
     MyTiff(const char *filename);
     virtual ~MyTiff();
     void close();
@@ -72,6 +74,7 @@ struct MyTiff {
     boolean loadStrip(unsigned char** datain, int directory, int strip);
     boolean loadFake(unsigned char** datain, int directory, int column, int row);
     GLuint load(int directory, int col, int row);
+    const char* compressionDescription();
 };
 
 MyTiff::MyTiff(const char *filename) {
@@ -81,6 +84,12 @@ MyTiff::MyTiff(const char *filename) {
     TIFFOpenOptionsFree(opts);
     if (tifin)  {
         TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+        TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
+         TIFFGetFieldDefaulted(tifin, TIFFTAG_COMPRESSION, &compression);
+         if (compression == COMPRESSION_JPEG)
+            TIFFGetFieldDefaulted(tifin, TIFFTAG_JPEGQUALITY, &compression_level);
+            else if (compression == COMPRESSION_ADOBE_DEFLATE || compression == COMPRESSION_DEFLATE)
+           TIFFGetFieldDefaulted(tifin, TIFFTAG_ZIPQUALITY, &compression_level); 
         TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
         directories = TIFFNumberOfDirectories(tifin);
         is_tiled = TIFFIsTiled(tifin);
@@ -100,6 +109,26 @@ MyTiff::~MyTiff() {
 void MyTiff::close() {
     TIFFClose(tifin);
 }
+
+const char* MyTiff::compressionDescription() {
+    static char buffer[128];
+    switch(compression) {
+        case COMPRESSION_ADOBE_DEFLATE:    
+        case COMPRESSION_DEFLATE:
+            snprintf(buffer, 32, "Deflate Level %d", compression_level == -1 ? 6 : compression_level);
+            break;
+        case COMPRESSION_JPEG:
+            snprintf(buffer, 128, "Jpeg Level %d",  compression_level);
+            break;
+       case COMPRESSION_NONE:
+            snprintf(buffer, 128, "None");
+            break;
+        default:
+          snprintf(buffer, 128, "%d", compression);  
+    }
+    return buffer;
+}
+
 
 boolean MyTiff::setDirectory(int directory) {
 if (directory >= directories) return false;
@@ -127,7 +156,7 @@ if (directory >= directories) return false;
 
 int min_height = 32;
 int max_width = 2048;
-int max_height = 2048;
+int max_height =2048;
 int min_width = 32;
 int default_tile_width = 256;
 int default_tile_height= 256;
@@ -308,6 +337,10 @@ int main(int argc, char **argv) {
     GLFWwindow *window = glfwCreateWindow(1024, 1024, "qshowtiff  / F. Delhoume / 2024", nullptr, nullptr);
     if (window == nullptr)
         return 1;
+
+      const GLFWvidmode* vmode =  glfwGetVideoMode(glfwGetPrimaryMonitor());
+        max_width = vmode->width;
+        max_height = vmode->height;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
 
@@ -391,20 +424,27 @@ int main(int argc, char **argv) {
                     errorbuffer[0] = 0;
                     texture = mytiff->load(current_dir, current_column, current_row);  
             }
+            // image info
+            ImGui::Text("Bits per sample: %d, Samples per pixel: %d, Compression: %s", mytiff->bits_per_sample, mytiff->samples_per_pixel,  mytiff->compressionDescription());
             // tile info
             if (mytiff->is_tiled) {
-                ImGui::Text("Directories: %d - Tilesizes: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
-                ImGui::Text("Directory: %d - Dimensions: %d x %d - Tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
-                ImGui::Text("Tile: %d, %d -> %d, %d", current_column, current_row, current_column * mytiff->tile_width, current_row * mytiff->tile_height);
+                ImGui::Text("Directories: %d | Tiles size: %d x %d", mytiff->directories, mytiff->tile_width, mytiff->tile_height);
+                ImGui::Text("Directory: %d | Image: %d x %d | Tiles: %d x %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_columns, mytiff->image_rows);
+                int left = current_column * mytiff->tile_width;
+                int top = current_row * mytiff->tile_height;
+                ImGui::Text("Tile: %d x %d (%d) | Corners: %d %d -=> %d %d", current_column, current_row, current_column + mytiff->image_columns * current_row, left, top, left + mytiff->tile_width, top + mytiff->tile_height);;
             } else {
-                ImGui::Text("Directories: %d - Strip height: %d", mytiff->directories, mytiff->tile_height);
-                ImGui::Text("Directory: %d - Dimensions: %d x %d - Strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
-                ImGui::Text("Strip: %d -> 0, %d", current_row, current_row * mytiff->tile_height);   
+                ImGui::Text("Directories: %d | Strip height: %d", mytiff->directories, mytiff->tile_height);
+                int top = current_row * mytiff->tile_height;
+               ImGui::Text("Directory: %d | Dimensions: %d x %d | Strips: %d", current_dir, mytiff->image_width, mytiff->image_height, mytiff->image_rows);
+                ImGui::Text("Strip: %d | Corners: 0, %d -=> %d, %d", current_row, top, mytiff->tile_width, top +  mytiff->tile_height);   
             }
             if (texture) {
+                float ratio = mytiff->tile_width / (float)mytiff->tile_height;
                 int final_width = mytiff->tile_width > max_width ? max_width : mytiff->tile_width;
                 if (final_width <= min_width) final_width = min_width;
-                int final_height = mytiff->tile_height > max_height ? max_height : mytiff->tile_height;
+                int wanted_height = final_width / ratio;
+                int final_height = wanted_height > max_height ? max_height : wanted_height;
                 if (final_height <= min_height) final_height = min_height;
 
                 ImVec2 avail_size = ImGui::GetContentRegionAvail();
