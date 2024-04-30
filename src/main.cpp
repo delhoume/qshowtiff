@@ -70,9 +70,9 @@ struct MyTiff {
     virtual ~MyTiff();
     void close();
     boolean setDirectory(int directory);
-    boolean loadTile(unsigned char** datain, int directory, int col, int row);
-    boolean loadStrip(unsigned char** datain, int directory, int strip);
-    boolean loadFake(unsigned char** datain, int directory, int column, int row);
+    boolean loadTile(unsigned char *data, int directory, int col, int row);
+    boolean loadStrip(unsigned char *data, int directory, int strip);
+    void blendWithChecker(unsigned char* data, unsigned int width, unsigned int height, unsigned int col, unsigned int row);
     GLuint load(int directory, int col, int row);
     const char* compressionDescription();
 };
@@ -194,21 +194,32 @@ static GLuint DataToTexture(unsigned char* data, int width, int height) {
     return texture_id;
 }
 
-boolean MyTiff::loadFake(unsigned char** datain, int directory , int column, int row) {
-    int width = tile_width > 0 ? tile_width : default_tile_width;
-    int height = tile_height > 0 ? tile_height : default_tile_height;
-    unsigned char *data = *datain ? *datain : new unsigned char[width * height * 4];
+unsigned char grey[4] = { 0xa0, 0xa0, 0xa0, 0xff };
+unsigned char white[4] = { 0xff , 0xff, 0xff, 0xff };
+unsigned int checker_size = 120;
+
+void blend(unsigned char result[4], unsigned char fg[4], unsigned char bg[4]) {
+    unsigned int alpha = fg[3] + 1;
+    unsigned int inv_alpha = 256 - fg[3];
+    result[0] = (unsigned char)((alpha * fg[0] + inv_alpha * bg[0]) >> 8);
+    result[1] = (unsigned char)((alpha * fg[1] + inv_alpha * bg[1]) >> 8);
+    result[2] = (unsigned char)((alpha * fg[2] + inv_alpha * bg[2]) >> 8);
+    result[3] = 0xff;
+}
+
+unsigned char* checker(boolean evenrow, boolean evencol) {
+    return (evenrow && evencol) || (!evenrow && !evencol) ? grey : white;
+}
+
+void MyTiff::blendWithChecker(unsigned char* data, unsigned int width, unsigned int height, unsigned int col, unsigned int row) {
       for (unsigned r = 0; r < height; ++r) {
             unsigned char *startrow = data + r * 4 * width;
+            boolean evenrow = ((r + row * tile_height) % checker_size) < (checker_size / 2);
             for (unsigned int c = 0; c < width; ++c)  {
-                memset(startrow + c * 4 + 1, directory % 256, 1);
-                memset(startrow + c * 4 + 0, column % 256, 1);
-                memset(startrow + c * 4 + 2, row % 256, 1);
-                memset(startrow + c * 4 + 3, 255, 1);
-            }
-        }
-        *datain = data;
-        return true;
+                boolean evencol = ((c + col * tile_width) % checker_size) < (checker_size / 2);
+                blend(startrow + c * 4, startrow + c * 4, checker(evencol, evenrow));
+             }
+      }
 }
 
 static char errorbuffer[1024] = { 0 };
@@ -217,20 +228,15 @@ static void RedirectErrors(const char* module, const char* fmt, va_list ap) {
   vsnprintf(errorbuffer, 1024, fmt, ap);
 }
 
-boolean debug_load_tiff = false;
+boolean debug_load_tiff = true;
 GLuint MyTiff::load(int directory, int column, int row) {
- unsigned char* data = 0;
- boolean ok = false;
-  if (!setDirectory(directory))
+   if (!setDirectory(directory))
         return 0;
-  if (is_tiled) ok = loadTile(&data, directory, column, row);
-  else ok = loadStrip(&data, directory, row);
-   if (!ok)  {
-        ok = loadFake(&data, directory, column, row);
-   }
-    if (debug_load_tiff && data)    {
+   unsigned char *data = new unsigned char[tile_width * tile_height * 4]; 
+    is_tiled ? loadTile(data, directory, column, row) : loadStrip(data, directory, row);
+    if (debug_load_tiff)    {
         char buffer[128];
-        snprintf(buffer, 128, "debug/directory_%.2d_column_%.4d_row_%.4d.jpg", directory, column, row);
+        snprintf(buffer, 128, "debug/directory_%.2d_column_%.4d_row_%.4d.png", directory, column, row);
         int final_width = tile_width > max_width ? max_width : tile_width;
         if (final_width <= min_width) final_width = min_width;
         int final_height = tile_height > max_height ? max_height : tile_height;
@@ -238,7 +244,7 @@ GLuint MyTiff::load(int directory, int column, int row) {
 
         unsigned char* newdata = new unsigned char[final_width * final_height * 4];
        stbir_resize_uint8_linear(data, tile_width, tile_height, 0, newdata, final_width, final_height, 0, (stbir_pixel_layout)4);
-        stbi_write_jpg(buffer, final_width, final_height, 4, newdata, 0);
+        stbi_write_png(buffer, final_width, final_height, 4, newdata, 0);
         delete [] newdata;
     }
     return ::DataToTexture(data, tile_width, tile_height);
@@ -265,41 +271,32 @@ static void SwapVertical(unsigned char* data, int width, int height) { // 4 byte
     }
 }
 
-boolean MyTiff::loadTile(unsigned char** datain, int directory, int column, int row) {
+boolean MyTiff::loadTile(unsigned char *data, int directory, int column, int row) {
   if (column >= image_columns || row >= image_rows)
      return 0;
-    unsigned char *data = *datain ?  *datain : new unsigned char[tile_width * tile_height * 4]; 
-    if (!data) {
-         snprintf(errorbuffer, 1024, "Tile: error allocating %d bytes", tile_width * tile_height * 4);
-         return 0;
-    }
-    boolean ok = TIFFReadRGBATile(tifin, column * tile_width, row * tile_height, (uint32_t *)data) == 1;
+ boolean ok = TIFFReadRGBATile(tifin, column * tile_width, row * tile_height, (uint32_t *)data) == 1;
          // TIFFReadRGBATile returns upside-down data...
     if (!ok) {
          snprintf(errorbuffer, 1024, "Error reading tile %d %d", column, row);
           return 0;
     }
     ::SwapVertical(data, tile_width, tile_height);
-    *datain = data;
+    blendWithChecker(data, tile_width, tile_height, column, row);
+
     return ok;
 }
 
-boolean MyTiff::loadStrip(unsigned char** datain, int directory, int row) {
-       setDirectory(directory);
+boolean MyTiff::loadStrip(unsigned char *data, int directory, int row) {
+    setDirectory(directory);
     if (directory >= directories || row >= image_rows)
         return 0;
-    unsigned char *data = *datain ?  *datain : new unsigned char[tile_width * tile_height * 4];
-   if (!data) {
-         snprintf(errorbuffer, 1024, "Strip: error allocating %d bytes", tile_width * tile_height * 4);
-return 0;
-    }
     boolean ok = TIFFReadRGBAStrip(tifin, row * tile_height, (uint32_t *)data) == 1;
-  if (!ok) {
+   if (!ok) {
          snprintf(errorbuffer, 1024, "Error reading strip %d", row);
           return 0;
     }
     SwapVertical(data, tile_width, tile_height);
-    *datain = data;
+    blendWithChecker(data, tile_width, tile_height, 1, row);
     return ok;
 }
 
