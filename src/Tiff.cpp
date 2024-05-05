@@ -1,0 +1,150 @@
+#include <Tiff.h>
+
+#include <iostream>
+
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr) {}
+Tiff::~Tiff() { close(); }
+
+boolean Tiff::loadFromFile(const char* filename) {
+        TIFFOpenOptions *opts = TIFFOpenOptionsAlloc();
+        TIFFOpenOptionsSetMaxSingleMemAlloc(opts, 0); // unlimited
+        _tifin = TIFFOpenExt(filename, "rb", opts);
+        TIFFOpenOptionsFree(opts);
+         if (_tifin) {
+            num_directories = TIFFNumberOfDirectories(_tifin);
+            current_directory = 0;
+        }
+       return _tifin != nullptr;
+     }
+
+    boolean Tiff::isLoaded() {
+        return _tifin != nullptr;
+    }
+
+    TiffDirectory* Tiff::getDirectoryInfo(int directory) {
+        if (directory_infos == nullptr)
+            buildDirectoryInfo();
+        return (directory >= num_directories) ? nullptr : &directory_infos[directory];
+    }
+
+    void Tiff::buildDirectoryInfo() {
+        delete [] directory_infos;
+        directory_infos = new TiffDirectory[num_directories];
+        for(int d = 0; d < num_directories; ++d) {
+            TIFFSetDirectory(_tifin, d);
+              directory_infos[d].getInfo(this);
+            directory_infos[d].level = d;
+        }
+        TIFFSetDirectory(_tifin, current_directory);
+    }
+
+    void TiffDirectory::getInfo(Tiff* tiff) {
+        TIFF* tifin = tiff->_tifin;
+        TIFFGetField(tifin, TIFFTAG_IMAGEWIDTH, &image_width);
+        TIFFGetField(tifin, TIFFTAG_IMAGELENGTH, &image_height); 
+        TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+        TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
+         TIFFGetFieldDefaulted(tifin, TIFFTAG_COMPRESSION, &compression);
+         if (compression == COMPRESSION_JPEG)
+            TIFFGetFieldDefaulted(tifin, TIFFTAG_JPEGQUALITY, &compression_level);
+            else if (compression == COMPRESSION_ADOBE_DEFLATE || compression == COMPRESSION_DEFLATE)
+           TIFFGetFieldDefaulted(tifin, TIFFTAG_ZIPQUALITY, &compression_level);         
+        is_tiled = TIFFIsTiled(tifin);
+        if (is_tiled) {
+            TIFFGetFieldDefaulted(tifin, TIFFTAG_TILEWIDTH, &tile_width);
+            TIFFGetFieldDefaulted(tifin, TIFFTAG_TILELENGTH, &tile_height);
+        } else {
+            TIFFGetFieldDefaulted(tifin, TIFFTAG_ROWSPERSTRIP, &tile_height);       
+         }
+        TIFFGetFieldDefaulted(tifin, TIFFTAG_SUBFILETYPE, &subfiletype);
+
+    if (is_tiled) {
+        image_columns = image_width / tile_width;
+        if (image_width %   tile_width)
+            ++image_columns;
+
+        image_rows = image_height / tile_height;
+        if (image_height %   tile_height)
+            ++image_rows;
+    } else {
+        tile_width = image_width;
+        image_columns = 1;
+        image_rows = image_height / tile_height;
+        if (image_height % tile_height)
+        ++ image_rows;
+    }
+    }
+
+static char error_buffer[1024];
+
+    boolean Tiff::setDirectory(int directory) {
+        if (directory >= num_directories) return false;
+        current_directory = directory;
+        TIFFSetDirectory(_tifin, current_directory);
+        return true;
+    }
+
+    void Tiff::close() {
+        delete [] directory_infos;
+        TIFFClose(_tifin);       
+    }
+
+    const char* TiffDirectory::compressionDescription() {
+    static char buffer[128];
+    switch(compression) {
+        case COMPRESSION_ADOBE_DEFLATE:    
+        case COMPRESSION_DEFLATE:
+            snprintf(buffer, 32, "Deflate Level %d", compression_level == -1 ? 6 : compression_level);
+            break;
+        case COMPRESSION_JPEG:
+            snprintf(buffer, 128, "Jpeg Level %d",  compression_level);
+            break;
+       case COMPRESSION_NONE:
+            snprintf(buffer, 128, "None");
+            break;
+            case 5:
+             snprintf(buffer, 128, "LZW");
+            break;
+        case 33003:
+        snprintf(buffer, 128, "Aperio jpeg2000 Ycbcr stream");
+            break;
+       case 33005:
+        snprintf(buffer, 128, "Aperio jpeg2000 RGB stream");
+            break;
+        default:
+          snprintf(buffer, 128, "%d", compression);  
+    }
+    return buffer;
+  }
+
+    const char* TiffDirectory::subfileDescription() {
+switch(subfiletype) {
+    case FILETYPE_REDUCEDIMAGE: return "Reduced"; break;
+   case FILETYPE_PAGE: return "Page"; break;
+   default: return "Normal"; break;
+    }
+    }
+
+    unsigned char* Tiff::loadTileOrStrip(int directory, int column, int row) {
+        if (column < 0 || row < 0) return nullptr;
+        TiffDirectory* di = getDirectoryInfo(directory);
+        if (di == nullptr || !di->isValid()) return nullptr;
+       boolean ok = setDirectory(directory);
+       unsigned char* data = new unsigned char[di->tile_width * di->tile_height * 4];
+          if (!ok) return data;
+      if (di->is_tiled) {
+        if(directory < num_directories && column < di->image_columns && row < di->image_rows) {
+            ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
+          }
+      } else if (directory < num_directories && column < di->image_columns && row < di->image_rows) {
+           ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)data) == 1;
+     }      
+      if (ok) stbi__vertical_flip(data, di->tile_width, di->tile_height,4);
+     else snprintf(error_buffer, 1024, "Error reading strip %d", row);
+      return data;
+    }
+ 

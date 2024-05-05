@@ -22,21 +22,23 @@ BIN_DIR = bin
 
 EXE =$(BIN_DIR)/qshowtiff
 
-SOURCES = $(SRC_DIR)/main.cpp
+SOURCES = $(SRC_DIR)/qshowtiff.cpp 
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backends/imgui_impl_glfw.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
-SOURCES += $(GFLAD_DIR)/src/glad.c
+#SOURCES += $(GFLAD_DIR)/src/glad.c
+SOURCES += $(SRC_DIR)/Window.cpp $(SRC_DIR)/qshowtiff.cpp $(SRC_DIR)/TiffViewer.cpp $(SRC_DIR)/Tiff.cpp 
 
 OBJS = $(addprefix $(BIN_DIR)/, $(addsuffix .o, $(basename $(notdir $(SOURCES)))))
 UNAME_S := $(shell uname -s)
-LINUX_GL_LIBS = -lGL
+GL_LIBS = -lglew
 
 TIFF_LIBS = -ltiff -lturbojpeg -lz-ng -lzstd -llzma
+GL_LIBS = -lglew -lglfw 
+GL_FLAGS=-DGL_SILENCE_DEPRECATION
 
-
-CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(GLAD_DIR)/include
+CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(GLAD_DIR)/include -I$(SRC_DIR) -I.
 CXXFLAGS += -g -Wall -Wformat
-LIBS +=
+CXXFLAGS += $(GL_FLAGS)
 
 
 ##---------------------------------------------------------------------
@@ -64,7 +66,8 @@ ifeq ($(UNAME_S), Darwin) #APPLE
 	LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
 	LIBS += -L/usr/local/lib -L/opt/homebrew/lib
 	#LIBS += -lglfw3
-	LIBS += -lglfw $(TIFF_LIBS)
+	LIBS += $(TIFF_LIBS) $(GL_LIBS) 
+
 
 	CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
 	CFLAGS = $(CXXFLAGS)
