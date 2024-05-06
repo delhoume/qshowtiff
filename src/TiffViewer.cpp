@@ -22,10 +22,13 @@ TiffViewer::~TiffViewer() = default;
 
 void TiffViewer::display()
 {
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+ ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-    glClear(GL_COLOR_BUFFER_BIT);
+     glClear(GL_COLOR_BUFFER_BIT);
 }
+
+#define MAX(a,b) (a) > (b) ? (a) : (b)eidth
+#define MIN(a,b) (a) > (b) ? (b) : (a)
 
 void TiffViewer::displayImGuiContents() {
      if (the_tiff.isLoaded()) {
@@ -36,14 +39,21 @@ void TiffViewer::displayImGuiContents() {
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImVec2 display_size = ImGui::GetIO().DisplaySize;
             ImGui::SetWindowSize(display_size);
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0, 0), display_size, IM_COL32(0,0,0,255));
             // fit all in window
              float scalex = display_size.x / (visible_columns * di->tile_width);         
              float scaley = display_size.y / (visible_rows * di->tile_height);
 
              float scaleuniform = scalex > scaley ? scaley : scalex;
              if (scaleuniform > 1.0) scaleuniform = 1.0;
-           int startx = (display_size.x - (scaleuniform * visible_columns * di->tile_width)) / 2;         
-            int starty = (display_size.y - (scaleuniform * visible_rows * di->tile_height)) / 2;
+             int displayed_tiles_x = MIN(di->image_columns - current_column, visible_columns);
+             int displayed_tiles_y = MIN(di->image_rows - current_row, visible_rows);
+             int real_width = displayed_tiles_x * di->tile_width;        
+             int real_height = displayed_tiles_y * di->tile_height;
+             if (current_column + visible_columns >= di->image_columns) real_width -= (di->image_columns * di->tile_width - di->image_width); // last column might go after end of image
+          if (current_row + visible_rows >= di->image_rows) real_height -= (di->image_rows * di->tile_height - di->image_height); // last row might go after end of image
+           int startx = (display_size.x - (scaleuniform * real_width)) / 2;         
+            int starty = (display_size.y - (scaleuniform * real_height)) / 2;
  //           std::cout << startx << " - " << starty << std::endl;
             for (int jj = 0; jj < visible_rows; ++jj) {
                 for (int ii = 0; ii < visible_columns; ++ii) {
@@ -51,7 +61,12 @@ void TiffViewer::displayImGuiContents() {
                     ImVec2 bottomright(topleft.x + scaleuniform * di->tile_width, topleft.y + scaleuniform * di->tile_height);
                 if (_textures[jj * visible_columns + ii]) {
                         ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[jj * visible_columns + ii], topleft, bottomright);
-                        if (show_borders) ImGui::GetWindowDrawList()->AddRect(topleft, bottomright, IM_COL32(255,0,0,255));
+                        if (show_borders) {
+                            static char info[64];
+                            snprintf(info, 64, "%d x %d", current_column + ii, current_row + jj);
+                             ImGui::GetWindowDrawList()->AddRect(topleft, bottomright, IM_COL32(255,0,0,255));
+                            ImGui::GetWindowDrawList()->AddText(topleft, IM_COL32(255, 255, 255, 255), info);
+                        }
                     }
                 }  
             }
@@ -114,12 +129,13 @@ void TiffViewer::process_imgui() {
  // now recompute everything
 // TODO:MAYBE cache !
 bool TiffViewer::update() {
-    if (_textures != nullptr) {
+      if (the_tiff.isLoaded()) {
+   if (_textures != nullptr) {
         glDeleteTextures(num_textures, _textures);
         delete [] _textures;      
+
     }
-    if (the_tiff.isLoaded()) {
-        TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
+       TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
         ImVec2 display_size = ImGui::GetIO().DisplaySize;
         max_visible_columns = di->image_columns; // display_size.x / di->tile_width;       
         max_visible_rows = di->image_rows; // display_size.y / di->tile_height;
@@ -140,26 +156,15 @@ bool TiffViewer::update() {
 
         num_textures = visible_columns * visible_rows;
         _textures = new GLuint[num_textures];
-#if 0
-           for (int jj = 0; jj < visible_rows; ++jj) {
-            for (int ii = 0; ii < visible_columns; ++ii) {
-                unsigned char* data = the_tiff.loadTileOrStrip(current_directory, current_column + ii, current_row + jj);
-                TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
-                _textures[jj * visible_columns + ii] = texture(data, di->tile_width, di->tile_height);
-            }
-        }
-#else
-           int startj  = (visible_rows % 2) == 0 ? (-visible_rows / 2) + 1 : - (visible_rows - 1)/ 2;
-         for (int jj = 0; jj < visible_rows; ++jj, ++startj) {
-            int starti  = (visible_columns % 2) == 0 ? (-visible_columns / 2) + 1 : - (visible_columns - 1)/ 2;
-                 for (int ii = 0; ii < visible_columns; ++ii, ++starti) {
-                    unsigned char* data = the_tiff.loadTileOrStrip(current_directory, current_column + starti, current_row + startj);
+         for (int jj = 0; jj < visible_rows; ++jj) {
+                 for (int ii = 0; ii < visible_columns; ++ii) {
+                    // will not be created if invalid tile
+                    unsigned char* data = the_tiff.loadTileOrStrip(current_directory, current_column + ii, current_row + jj);
                     TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
                     _textures[jj * visible_columns + ii] = texture(data, di->tile_width, di->tile_height);
-            }
-        }
- #endif   
+        }  
     }
+      }
     return true;
 }
 

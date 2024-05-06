@@ -82,7 +82,7 @@ boolean Tiff::loadFromFile(const char* filename) {
 static char error_buffer[1024];
 
     boolean Tiff::setDirectory(int directory) {
-        if (directory >= num_directories) return false;
+        if (directory >= num_directories || directory < 0) return false;
         current_directory = directory;
         TIFFSetDirectory(_tifin, current_directory);
         return true;
@@ -130,21 +130,23 @@ switch(subfiletype) {
     }
 
     unsigned char* Tiff::loadTileOrStrip(int directory, int column, int row) {
-        if (column < 0 || row < 0) return nullptr;
-        TiffDirectory* di = getDirectoryInfo(directory);
+         TiffDirectory* di = getDirectoryInfo(directory);
         if (di == nullptr || !di->isValid()) return nullptr;
-       boolean ok = setDirectory(directory);
-       unsigned char* data = new unsigned char[di->tile_width * di->tile_height * 4];
-          if (!ok) return data;
-      if (di->is_tiled) {
-        if(directory < num_directories && column < di->image_columns && row < di->image_rows) {
-            ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
-          }
-      } else if (directory < num_directories && column < di->image_columns && row < di->image_rows) {
-           ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)data) == 1;
-     }      
-      if (ok) stbi__vertical_flip(data, di->tile_width, di->tile_height,4);
-     else snprintf(error_buffer, 1024, "Error reading strip %d", row);
-      return data;
+        if (!setDirectory(directory) || column < 0 || row < 0 || column >= di->image_columns || row >= di->image_rows)
+            return nullptr;
+        unsigned char* data = new unsigned char[di->tile_width * di->tile_height * 4];
+        boolean ok = false;
+        if (di->is_tiled) {
+                ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
+        } else {
+            ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)data) == 1;
+        }      
+        if (ok) stbi__vertical_flip(data, di->tile_width, di->tile_height,4);
+        else {
+            snprintf(error_buffer, 1024, "Error reading %s %dx%d", di->is_tiled ? "tile": "strip", column, row);
+            delete [] data;
+            data = 0;
+        }
+        return data;
     }
  
