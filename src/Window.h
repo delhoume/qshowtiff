@@ -12,6 +12,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+
 namespace pmp {
 
 //! A window provided by GLFW

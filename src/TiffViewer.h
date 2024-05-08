@@ -8,9 +8,8 @@
 class TiffViewer : public pmp::Window {
 public:
     TiffViewer(int width, int height);
-    ~TiffViewer() override;
 
-    void display() override;
+    void display() override;;
     void process_imgui() override;
     void displayImGuiContents() override;
     void resize(int width, int height) override;
@@ -23,14 +22,16 @@ public:
     Tiff the_tiff;
 
      int current_directory;
-     int current_column;
-     int current_row;
-     int visible_columns;
-     int visible_rows;
-     int max_visible_columns;
-     int max_visible_rows;
      GLuint* _textures;
      int num_textures; // hack when update
- bool show_borders;
+    bool show_borders;
+    float** heatmaps;
+    float* maxheat;
+    int* visible_columns;
+    int* visible_rows;
+     int* current_columns;
+     int* current_rows;
+   void init();    
+    void clean();
 
 };

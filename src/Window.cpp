@@ -9,6 +9,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <space_font.h>
+#include <implot.h>
 
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -146,6 +147,7 @@ Window::~Window()
 {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
     glfwTerminate(); // this automatically destroys remaining windows
 }
@@ -223,6 +225,8 @@ void Window::init_imgui()
     style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.16f, 0.62f, 0.87f, 0.35f);
     style.Colors[ImGuiCol_ModalWindowDimBg] =
         ImVec4(0.20f, 0.20f, 0.20f, 0.70f);
+        ImPlot::CreateContext();
+        ImPlot::CreateContext();
 }
 
 void Window::scale_imgui(float scale)
@@ -500,7 +504,7 @@ void Window::keyboard(int key, int /*code*/, int action, int /*mods*/)
         case GLFW_KEY_PAGE_UP:
         {
             scale_imgui(1.25);
-            break;
+            break   ;
         }
 
         case GLFW_KEY_PAGE_DOWN:

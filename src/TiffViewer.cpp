@@ -7,27 +7,30 @@
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include <implot.h>
+
 TiffViewer::TiffViewer(int width, int height)
     : Window("qshowtiff -  F. Delhoume 2024", width, height, true),
     current_directory(0),
-    current_column(0),
-    current_row(0),
-    visible_columns(1),
-    visible_rows(1),
-    _textures(nullptr),
-    show_borders(false) {
+     _textures(nullptr),
+    show_borders(false),
+    heatmaps(nullptr),
+    maxheat(nullptr),
+    visible_columns(nullptr),
+    visible_rows(nullptr),
+       current_columns(nullptr),
+    current_rows(nullptr) {
 }
 
-TiffViewer::~TiffViewer() = default;
 
-void TiffViewer::display()
-{
+void TiffViewer::display()  {
  ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
      glClear(GL_COLOR_BUFFER_BIT);
+
 }
 
-#define MAX(a,b) (a) > (b) ? (a) : (b)eidth
+#define MAX(a,b) (a) > (b) ? (a) : (b)
 #define MIN(a,b) (a) > (b) ? (b) : (a)
 
 void TiffViewer::displayImGuiContents() {
@@ -39,32 +42,31 @@ void TiffViewer::displayImGuiContents() {
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImVec2 display_size = ImGui::GetIO().DisplaySize;
             ImGui::SetWindowSize(display_size);
-            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0, 0), display_size, IM_COL32(0,0,0,255));
             // fit all in window
-             float scalex = display_size.x / (visible_columns * di->tile_width);         
-             float scaley = display_size.y / (visible_rows * di->tile_height);
+             float scalex = display_size.x / (visible_columns[current_directory] * di->tile_width);         
+             float scaley = display_size.y / (visible_rows[current_directory] * di->tile_height);
 
              float scaleuniform = scalex > scaley ? scaley : scalex;
              if (scaleuniform > 1.0) scaleuniform = 1.0;
-             int displayed_tiles_x = MIN(di->image_columns - current_column, visible_columns);
-             int displayed_tiles_y = MIN(di->image_rows - current_row, visible_rows);
+             int displayed_tiles_x = MIN(di->image_columns - current_columns[current_directory], visible_columns[current_directory]);
+             int displayed_tiles_y = MIN(di->image_rows - current_rows[current_directory], visible_rows[current_directory]);
              int real_width = displayed_tiles_x * di->tile_width;        
              int real_height = displayed_tiles_y * di->tile_height;
-             if (current_column + visible_columns >= di->image_columns) real_width -= (di->image_columns * di->tile_width - di->image_width); // last column might go after end of image
-          if (current_row + visible_rows >= di->image_rows) real_height -= (di->image_rows * di->tile_height - di->image_height); // last row might go after end of image
+             if (current_columns[current_directory] + visible_columns[current_directory] >= di->image_columns) real_width -= (di->image_columns * di->tile_width - di->image_width); // last column might go after end of image
+          if (current_rows[current_directory] + visible_rows[current_directory] >= di->image_rows) real_height -= (di->image_rows * di->tile_height - di->image_height); // last row might go after end of image
            int startx = (display_size.x - (scaleuniform * real_width)) / 2;         
             int starty = (display_size.y - (scaleuniform * real_height)) / 2;
- //           std::cout << startx << " - " << starty << std::endl;
-            for (int jj = 0; jj < visible_rows; ++jj) {
-                for (int ii = 0; ii < visible_columns; ++ii) {
+            for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
+                for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {
                     ImVec2 topleft(startx + ii * scaleuniform * di->tile_width, starty + jj * scaleuniform * di->tile_height);  
                     ImVec2 bottomright(topleft.x + scaleuniform * di->tile_width, topleft.y + scaleuniform * di->tile_height);
-                if (_textures[jj * visible_columns + ii]) {
-                        ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[jj * visible_columns + ii], topleft, bottomright);
+                if (_textures[jj * visible_columns[current_directory] + ii]) {
+                        ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[jj * visible_columns[current_directory] + ii], topleft, bottomright);
                         if (show_borders) {
-                            static char info[64];
-                            snprintf(info, 64, "%d x %d", current_column + ii, current_row + jj);
+                            static char info[16];
+                            snprintf(info, 64, "%d x %d", current_columns[current_directory] + ii, current_rows[current_directory] + jj);
                              ImGui::GetWindowDrawList()->AddRect(topleft, bottomright, IM_COL32(255,0,0,255));
+                            topleft.x += 5; topleft.y += 5;
                             ImGui::GetWindowDrawList()->AddText(topleft, IM_COL32(255, 255, 255, 255), info);
                         }
                     }
@@ -86,86 +88,132 @@ void humanMemorySize(uint64_t bytes) {
 
 void TiffViewer::process_imgui() {
     if (the_tiff.isLoaded()) {
-        ImGui::BulletText("%d director%s", the_tiff.num_directories, the_tiff.num_directories == 1 ? "y" : "ies");
-         for (int d = 0; d < the_tiff.num_directories; ++d) {
+          for (int d = 0; d < the_tiff.num_directories; ++d) {
+            ImGui::PushID(d);
             TiffDirectory* di = the_tiff.getDirectoryInfo(d);
-            ImGui::BulletText("%d | %s image | %d x %d", d,  di->subfileDescription(), di->image_width, di->image_height);
-       if (d == current_directory) { 
-                ImGui::GetBackgroundDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 200, 0,255));
-            }
-          ImGui::Indent();
-             ImGui::BulletText("%s | %d bps | %d spp", di->compressionDescription(), di->bits_per_sample, di->samples_per_pixel);
+            char buff[64];
+            snprintf(buff, 64, "Directory %d; %d x %d  %s", d, di->image_width, di->image_height, di->subfileDescription());
+            ImGui::Separator();
+            if (ImGui::RadioButton(buff, &current_directory, d)) update();
+            ImGui::BulletText("%s | %d bps | %d spp", di->compressionDescription(), di->bits_per_sample, di->samples_per_pixel);
             if (di->is_tiled) ImGui::BulletText("tile size %d x %d | %d x %d tiles (%d)", di->tile_width, di->tile_height, di->image_columns, di->image_rows, di->image_columns * di->image_rows);
-            else ImGui::BulletText("strip height %d | %d strips", di->tile_height, di->image_rows);
-            ImGui::Unindent();
-       
+            else ImGui::BulletText("strip height %d | %d strips", di->tile_height, di->image_rows);   
+            
+            int r =  di->image_width / di->image_height;
+            int heat_width = 200;
+            int heat_height = heat_width / r;
+            if (d != current_directory) ImGui::BeginDisabled();
+            ImGui::PushItemWidth(heat_width);
+            if (di->is_tiled) {  
+                //if (ImGui::DragIntRange2("Columns", &current_columns[d], &visible_columns[d], 1.0, 0, di->image_columns - 1, "Start: %d", "Width: %d")) update();                 
+                 if(ImGui::SliderInt("Visible columns", &(visible_columns[d]), 1, di->image_columns)) update();
+                if(ImGui::SliderInt("Column", &(current_columns[d]), 0, di->image_columns - 1)) update();           
+          }
+        // heatmap
+            static ImPlotHeatmapFlags hm_flags = 0;
+            static ImPlotColormap map  = ImPlotColormap_Viridis;
+            ImPlot::PushColormap(map);
+            static ImPlotAxisFlags axes_flag = ImPlotAxisFlags_NoDecorations | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickMarks;
+            if (ImPlot::BeginPlot("ImPlot", ImVec2(heat_width, heat_height), ImPlotFlags_NoTitle |ImPlotFlags_NoInputs | ImPlotFlags_NoLegend | ImPlotFlags_NoFrame | ImPlotFlags_NoMouseText)) {
+                ImPlot::SetupAxes(NULL, NULL, axes_flag, axes_flag);
+                ImPlot::PlotHeatmap("Heatmap", heatmaps[d],di->image_rows, di->image_columns, 0, maxheat[d], 
+                NULL, ImPlotPoint(0,0), ImPlotPoint(1,1), hm_flags);
+                ImPlot::EndPlot();
             }
-        if(ImGui::SliderInt("Directory", &current_directory, 0, the_tiff.num_directories - 1)) {
-            current_column = 0;
-            current_row = 0;
-            update();
-        }
-
-        TiffDirectory* cdi = the_tiff.getDirectoryInfo(current_directory);
-        if (!cdi->is_tiled) ImGui::BeginDisabled(true);
-        
-       if(ImGui::SliderInt("Column", &current_column, 0, cdi->image_columns - 1)) update();           
-       if(ImGui::SliderInt("Visible columns", &visible_columns, 1, cdi->image_columns)) update();
-       if (!cdi->is_tiled) ImGui::EndDisabled();
-       if(ImGui::SliderInt("Row", &current_row, 0, cdi->image_rows - 1)) update();
-       if(ImGui::SliderInt("Visible rows", &visible_rows, 1,  cdi->image_rows)) update();
-
-      ImGui::Checkbox("Show borders", &show_borders);   
-      uint64_t memory_used = visible_rows * visible_columns * 4 * cdi->tile_height * cdi->tile_width;
-    humanMemorySize(memory_used);
-    ImGui::BulletText("Memory usage %s", memoryUsageStr);
-    //   if (cdi->is_tiled)
-    //     ImGui::BulletText("max visible tiles %d x %d", max_visible_columns, max_visible_rows);
-    //     else
-    //      ImGui::BulletText("max visible strips %d", max_visible_rows);
+            
+            ImGui::SameLine();
+            if(ImGui::VSliderInt("Row", ImVec2(18,  200), &(current_rows[d]), 0, di->image_rows - 1)) update();
+            ImGui::SameLine();
+            if(ImGui::VSliderInt("Visible rows", ImVec2(18,  200), &(visible_rows[d]), 1,  di->image_rows)) update();
+            ImGui::PopItemWidth();
+            if (d == current_directory) {
+                ImGui::Checkbox("Show tiles", &show_borders); 
+                int used_textures = 0;
+                for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
+                        for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {
+                            if (_textures[jj * visible_columns[current_directory] + ii] > 0)
+                                used_textures++;
+                        }
+                }
+                TiffDirectory* cdi = the_tiff.getDirectoryInfo(current_directory);
+                uint64_t memory_used = used_textures * 4 * cdi->tile_height * cdi->tile_width;
+                humanMemorySize(memory_used);
+                ImGui::BulletText("Loaded tiles: %d, Memory usage %s", used_textures, memoryUsageStr);
+            }
+        if (d != current_directory) ImGui::EndDisabled();
+            ImGui::PopID();
+    }
+    //  bool yep = true;
+    //     ImGui::ShowMetricsWindow(&yep);   
+    //     ImPlot::ShowMetricsWindow(&yep);
+    } else {
+        bool yep = true;
+        ImPlot::ShowDemoWindow(&yep);
+        ImGui::ShowDemoWindow(&yep);
     }
 }
 
  // now recompute everything
-// TODO:MAYBE cache !
 bool TiffViewer::update() {
       if (the_tiff.isLoaded()) {
-   if (_textures != nullptr) {
-        glDeleteTextures(num_textures, _textures);
-        delete [] _textures;      
-
-    }
+        if (_textures != nullptr) {
+            glDeleteTextures(num_textures, _textures);
+            delete [] _textures;      
+        }
        TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
-        ImVec2 display_size = ImGui::GetIO().DisplaySize;
-        max_visible_columns = di->image_columns; // display_size.x / di->tile_width;       
-        max_visible_rows = di->image_rows; // display_size.y / di->tile_height;
-        if (max_visible_columns * di->tile_width < display_size.x)
-            max_visible_columns++;
-        if (max_visible_rows * di->tile_height < display_size.y)
-        max_visible_rows++;       
-        if (visible_columns >= max_visible_columns) 
-            visible_columns = max_visible_columns;
-        if (visible_rows >= max_visible_rows) 
-            visible_rows = max_visible_rows;
-        if (visible_columns > di->image_columns)
-            visible_columns = di->image_columns;
-        if (visible_rows > di->image_rows)
-            visible_rows = di->image_rows;
-        if (visible_columns < 1) visible_columns = 1;        
-        if (visible_rows < 1) visible_rows = 1;
-
-        num_textures = visible_columns * visible_rows;
+         num_textures = visible_columns[current_directory] * visible_rows[current_directory];
         _textures = new GLuint[num_textures];
-         for (int jj = 0; jj < visible_rows; ++jj) {
-                 for (int ii = 0; ii < visible_columns; ++ii) {
+         for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
+                 for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {
                     // will not be created if invalid tile
-                    unsigned char* data = the_tiff.loadTileOrStrip(current_directory, current_column + ii, current_row + jj);
-                    TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
-                    _textures[jj * visible_columns + ii] = texture(data, di->tile_width, di->tile_height);
-        }  
-    }
-      }
+                    unsigned char* data = the_tiff.loadTileOrStrip(current_directory, current_columns[current_directory] + ii, current_rows[current_directory] + jj);
+                    GLuint text = texture(data, di->tile_width, di->tile_height);
+                    _textures[jj * visible_columns[current_directory] + ii] = text;
+                     if (text > 0) {
+                        float count = heatmaps[current_directory][current_columns[current_directory] + ii + (current_rows[current_directory] + jj) * di->image_columns]++;
+                        if (count > maxheat[current_directory])
+                            maxheat[current_directory] = count;
+                    }
+                 }
+         }
+     }  
     return true;
+}
+
+void TiffViewer::clean() {
+     if (heatmaps != nullptr) {
+        for (int i = 0; i < the_tiff.num_directories; ++i) {
+        if (heatmaps[i])
+            delete [] heatmaps[i];
+    }
+    delete [] heatmaps;
+    delete [] maxheat;    
+    delete [] visible_columns;
+    delete [] visible_rows;    
+    delete [] maxheat;
+    delete [] current_columns;
+    delete [] current_rows;
+}
+}
+
+void TiffViewer::init() {
+    heatmaps = new float*[the_tiff.num_directories];
+    maxheat = new float[the_tiff.num_directories];
+    visible_columns = new int[the_tiff.num_directories];
+    visible_rows = new int[the_tiff.num_directories];
+    current_columns = new int[the_tiff.num_directories];
+    current_rows = new int[the_tiff.num_directories];
+    for (int d = 0; d < the_tiff.num_directories; ++d) {
+        TiffDirectory* di = the_tiff.getDirectoryInfo(d);
+        heatmaps[d] = new float[di->image_columns * di->image_rows];
+       for (int idx = 0; idx < di->image_columns * di->image_rows; ++idx) {
+        heatmaps[d][idx] = 0.0;
+       }
+        current_columns[d] = 0;    
+        current_rows[d] = 0;
+        visible_columns[d] = 1 ;
+        visible_rows[d] = 1;
+    }
 }
 
 void TiffViewer::resize(int width, int height) {
@@ -174,7 +222,10 @@ void TiffViewer::resize(int width, int height) {
 
 bool TiffViewer::load(const char *filename) {
     boolean success = the_tiff.loadFromFile(filename);
-    if (success) update();
+    if (success) {
+        init();
+        update();
+    }
     return success;
 }
 
