@@ -35,8 +35,6 @@ protected:
     //! clears the buffers, calls the draw() method, and performs buffer swap
     virtual void display() = 0;
 
-    virtual void displayImGuiContents() {}
-
     //! this function handles keyboard events
     virtual void keyboard(int /*key*/, int /*code*/, int /*action*/,
                           int /*mods*/);

@@ -13,7 +13,8 @@ TiffViewer::TiffViewer(int width, int height)
     : Window("qshowtiff -  F. Delhoume 2024", width, height, true),
     current_directory(0),
      _textures(nullptr),
-    show_borders(false),
+    show_borders(false),    
+    full_image_mode(false),
     heatmaps(nullptr),
     maxheat(nullptr),
     visible_columns(nullptr),
@@ -33,7 +34,7 @@ void TiffViewer::display()  {
 #define MAX(a,b) (a) > (b) ? (a) : (b)
 #define MIN(a,b) (a) > (b) ? (b) : (a)
 
-void TiffViewer::displayImGuiContents() {
+void TiffViewer::displayTiles() {
      if (the_tiff.isLoaded()) {
         TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
        if (di->isValid()) {
@@ -42,36 +43,90 @@ void TiffViewer::displayImGuiContents() {
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImVec2 display_size = ImGui::GetIO().DisplaySize;
             ImGui::SetWindowSize(display_size);
-            // fit all in window
+            // TODO: factorize code for both modes
+            if (full_image_mode) {
+                // center image, always at the same position for all directories when ratio is the same
+                float scalex = display_size.x / (di->tile_width * di->image_columns);         
+                float scaley = display_size.y / (di->tile_height * di->image_rows);
+
+                float scaleuniform = scalex > scaley ? scaley : scalex;
+                if (scaleuniform > 1.0) scaleuniform = 1.0;  
+                scaleuniform *= 0.9; // margin around image
+
+                float real_width = scaleuniform * di->image_width;
+                float real_height = scaleuniform * di->image_height;
+
+                float real_tile_width = scaleuniform * di->tile_width;
+                float real_tile_height = scaleuniform * di->tile_height;
+
+
+                int startx = (display_size.x - real_width) / 2;         
+                int starty = (display_size.y - real_height) / 2;
+
+                for (int jj = 0; jj < di->image_rows; ++jj) {
+                    boolean isRowVisible = (jj >= current_rows[current_directory] && jj < (current_rows[current_directory] + visible_rows[current_directory]));
+                     for (int ii = 0; ii < di->image_columns; ++ii) {
+                        ImVec2 topleft(startx + ii * real_tile_width, starty + jj * real_tile_height);
+                        ImVec2 bottomRight(topleft.x + real_tile_width, topleft.y + real_tile_height);
+                           // but only draw visible tiles
+                        boolean isColumnVisible = (ii >= current_columns[current_directory] && ii < (current_columns[current_directory] + visible_columns[current_directory]));
+                       if (isRowVisible && isColumnVisible) {
+                           int real_index = (jj - current_rows[current_directory]) * visible_columns[current_directory] + (ii - current_columns[current_directory]);
+                            if (real_index < (visible_columns[current_directory] * visible_rows[current_directory]))
+                                ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[real_index], topleft, bottomRight);
+                          }
+                       // // draw borders and pos for all tiles (missing last border)
+                        if (show_borders) {
+                            ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + ii * real_tile_width, starty), ImVec2(startx + ii * real_tile_width, starty + real_tile_height * di->image_rows), IM_COL32(255, 0, 0, 255));             
+                            static char info[16];
+                            snprintf(info, 16, "%d x %d", ii - current_columns[current_directory], jj - current_rows[current_directory]);
+                            ImGui::GetWindowDrawList()->AddText(ImVec2(topleft.x + 5, topleft.y + 5), IM_COL32(255, 255, 255, 255), info);
+                        }
+ 
+                    }
+                   // show horizontal grid minus last, and text
+                    if (show_borders) {
+                        ImGui::GetWindowDrawList()->AddLine(ImVec2(startx, starty + jj * real_tile_height), ImVec2(startx + real_tile_width * di->image_columns, starty + jj * real_tile_height), IM_COL32(255, 0, 0, 255));
+                    }
+                }
+                // finish grid
+                if (show_borders) {
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(startx, starty + di->image_rows * real_tile_height), ImVec2(startx + di->image_columns * real_tile_width, starty + di->image_rows * real_tile_height), IM_COL32(255, 0, 0, 255));
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + di->image_columns * real_tile_width, starty), ImVec2(startx + di->image_columns * real_tile_width, starty + di->image_rows * real_tile_height), IM_COL32(255, 0, 0, 255));
+                } 
+            } else {
+            // fit only visible tiles in window (center tiles)
              float scalex = display_size.x / (visible_columns[current_directory] * di->tile_width);         
              float scaley = display_size.y / (visible_rows[current_directory] * di->tile_height);
 
              float scaleuniform = scalex > scaley ? scaley : scalex;
-             if (scaleuniform > 1.0) scaleuniform = 1.0;
-             int displayed_tiles_x = MIN(di->image_columns - current_columns[current_directory], visible_columns[current_directory]);
+           if (scaleuniform > 1.0) scaleuniform = 1.0;  
+               scaleuniform *= 0.9; // margin around image
+              int displayed_tiles_x = MIN(di->image_columns - current_columns[current_directory], visible_columns[current_directory]);
              int displayed_tiles_y = MIN(di->image_rows - current_rows[current_directory], visible_rows[current_directory]);
              int real_width = displayed_tiles_x * di->tile_width;        
              int real_height = displayed_tiles_y * di->tile_height;
              if (current_columns[current_directory] + visible_columns[current_directory] >= di->image_columns) real_width -= (di->image_columns * di->tile_width - di->image_width); // last column might go after end of image
-          if (current_rows[current_directory] + visible_rows[current_directory] >= di->image_rows) real_height -= (di->image_rows * di->tile_height - di->image_height); // last row might go after end of image
-           int startx = (display_size.x - (scaleuniform * real_width)) / 2;         
-            int starty = (display_size.y - (scaleuniform * real_height)) / 2;
-            for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
-                for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {
-                    ImVec2 topleft(startx + ii * scaleuniform * di->tile_width, starty + jj * scaleuniform * di->tile_height);  
-                    ImVec2 bottomright(topleft.x + scaleuniform * di->tile_width, topleft.y + scaleuniform * di->tile_height);
-                if (_textures[jj * visible_columns[current_directory] + ii]) {
-                        ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[jj * visible_columns[current_directory] + ii], topleft, bottomright);
-                        if (show_borders) {
-                            static char info[16];
-                            snprintf(info, 64, "%d x %d", current_columns[current_directory] + ii, current_rows[current_directory] + jj);
-                             ImGui::GetWindowDrawList()->AddRect(topleft, bottomright, IM_COL32(255,0,0,255));
-                            topleft.x += 5; topleft.y += 5;
-                            ImGui::GetWindowDrawList()->AddText(topleft, IM_COL32(255, 255, 255, 255), info);
+            if (current_rows[current_directory] + visible_rows[current_directory] >= di->image_rows) real_height -= (di->image_rows * di->tile_height - di->image_height); // last row might go after end of image
+            int startx = (display_size.x - (scaleuniform * real_width)) / 2;         
+                int starty = (display_size.y - (scaleuniform * real_height)) / 2;
+                for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
+                    for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {
+                        ImVec2 topleft(startx + ii * scaleuniform * di->tile_width, starty + jj * scaleuniform * di->tile_height);  
+                        ImVec2 bottomright(topleft.x + scaleuniform * di->tile_width, topleft.y + scaleuniform * di->tile_height);
+                    if (_textures[jj * visible_columns[current_directory] + ii]) {
+                            ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)_textures[jj * visible_columns[current_directory] + ii], topleft, bottomright);
+                            if (show_borders) {
+                                static char info[16];
+                                snprintf(info, 16, "%d x %d", current_columns[current_directory] + ii, current_rows[current_directory] + jj);
+                                ImGui::GetWindowDrawList()->AddRect(topleft, bottomright, IM_COL32(255,0,0,255));
+                                topleft.x += 5; topleft.y += 5;
+                                ImGui::GetWindowDrawList()->AddText(topleft, IM_COL32(255, 255, 255, 255), info);
+                            }
                         }
-                    }
-                }  
-            }
+                    }  
+                }
+        }
        }
         ImGui::End();
     }
@@ -88,6 +143,7 @@ void humanMemorySize(uint64_t bytes) {
 
 void TiffViewer::process_imgui() {
     if (the_tiff.isLoaded()) {
+        displayTiles();
           for (int d = 0; d < the_tiff.num_directories; ++d) {
             ImGui::PushID(d);
             TiffDirectory* di = the_tiff.getDirectoryInfo(d);
@@ -127,7 +183,8 @@ void TiffViewer::process_imgui() {
             if(ImGui::VSliderInt("Visible rows", ImVec2(18,  200), &(visible_rows[d]), 1,  di->image_rows)) update();
             ImGui::PopItemWidth();
             if (d == current_directory) {
-                ImGui::Checkbox("Show tiles", &show_borders); 
+                ImGui::Checkbox("Show tiles borders", &show_borders); 
+               ImGui::SameLine(); ImGui::Checkbox("Full image mode", &full_image_mode); 
                 int used_textures = 0;
                 for (int jj = 0; jj < visible_rows[current_directory]; ++jj) {
                         for (int ii = 0; ii < visible_columns[current_directory]; ++ii) {

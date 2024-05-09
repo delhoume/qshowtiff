@@ -11,7 +11,7 @@ public:
 
     void display() override;;
     void process_imgui() override;
-    void displayImGuiContents() override;
+    void displayTiles();
     void resize(int width, int height) override;
 
     bool load(const char* filename);
@@ -24,7 +24,8 @@ public:
      int current_directory;
      GLuint* _textures;
      int num_textures; // hack when update
-    bool show_borders;
+    bool show_borders;    
+    bool full_image_mode;
     float** heatmaps;
     float* maxheat;
     int* visible_columns;

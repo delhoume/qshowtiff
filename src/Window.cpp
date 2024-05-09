@@ -364,7 +364,6 @@ void Window::render_frame()
             "Mesh Info", nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
 
-        instance_->displayImGuiContents();
        ImGui::Text("Press '?' for help");
         ImGui::Spacing();
         ImGui::Separator();
