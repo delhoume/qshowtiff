@@ -166,18 +166,20 @@ void TiffViewer::process_imgui() {
                 if(ImGui::SliderInt("Column", &(current_columns[d]), 0, di->image_columns - 1)) update();           
           }
         // heatmap
-            static ImPlotHeatmapFlags hm_flags = 0;
-            static ImPlotColormap map  = ImPlotColormap_Viridis;
-            ImPlot::PushColormap(map);
-            static ImPlotAxisFlags axes_flag = ImPlotAxisFlags_NoDecorations | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickMarks;
-            if (ImPlot::BeginPlot("ImPlot", ImVec2(heat_width, heat_height), ImPlotFlags_NoTitle |ImPlotFlags_NoInputs | ImPlotFlags_NoLegend | ImPlotFlags_NoFrame | ImPlotFlags_NoMouseText)) {
-                ImPlot::SetupAxes(NULL, NULL, axes_flag, axes_flag);
-                ImPlot::PlotHeatmap("Heatmap", heatmaps[d],di->image_rows, di->image_columns, 0, maxheat[d], 
-                NULL, ImPlotPoint(0,0), ImPlotPoint(1,1), hm_flags);
-                ImPlot::EndPlot();
-            }
-            
-            ImGui::SameLine();
+              if (di->image_columns * di->image_rows <= 1000000) {
+                  static ImPlotHeatmapFlags hm_flags = 0;
+                  static ImPlotColormap map  = ImPlotColormap_Viridis;
+                  ImPlot::PushColormap(map);
+                  static ImPlotAxisFlags axes_flag = ImPlotAxisFlags_NoDecorations | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickMarks;
+                  if (ImPlot::BeginPlot("ImPlot", ImVec2(heat_width, heat_height), ImPlotFlags_NoTitle |ImPlotFlags_NoInputs | ImPlotFlags_NoLegend | ImPlotFlags_NoFrame | ImPlotFlags_NoMouseText)) {
+                      ImPlot::SetupAxes(NULL, NULL, axes_flag, axes_flag);
+                      ImPlot::PlotHeatmap("Heatmap", heatmaps[d],di->image_rows, di->image_columns, 0, maxheat[d],
+                      NULL, ImPlotPoint(0,0), ImPlotPoint(1,1), hm_flags);
+                      ImPlot::EndPlot();
+                  }
+
+                  ImGui::SameLine();
+              }
             if(ImGui::VSliderInt("Row", ImVec2(18,  200), &(current_rows[d]), 0, di->image_rows - 1)) update();
             ImGui::SameLine();
             if(ImGui::VSliderInt("Visible rows", ImVec2(18,  200), &(visible_rows[d]), 1,  di->image_rows)) update();
