@@ -8,3 +8,5 @@ Written as an exercise in imgui coding...
 
 
 ![qshowtiff inspecting a pyramidal TIFF  ](images/qshowtiff_ambassadors.png)
+
+![qshowtiff inspecting one of the largest iages in the world (> 4 200 000 x  2 100 000)](images/qshowtiff_mars.png)
