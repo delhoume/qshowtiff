@@ -13,6 +13,7 @@ public:
     void process_imgui() override;
     void displayTiles();
     void resize(int width, int height) override;
+    void keyboard(int key, int code, int action, int mods) override;
 
     bool load(const char* filename);
     bool update(); // when something change
@@ -22,17 +23,27 @@ public:
     Tiff the_tiff;
 
      int current_directory;
-     GLuint* _textures;
-     int num_textures; // hack when update
-    bool show_borders;    
+     GLuint** tiles;
+    bool show_borders;  
+    bool show_numbers;    
     bool full_image_mode;
-    float** heatmaps;
-    float* maxheat;
+    bool show_over_limit_tiles;
+    float** heatmaps;   
+     float** mini_heatmaps;
+     int* mini_heatmaps_widths;     
+     int* mini_heatmaps_heights;
+    float* maxheats;
     int* visible_columns;
     int* visible_rows;
      int* current_columns;
      int* current_rows;
-   void init();    
+     GLuint nomem;
+    int memory_limit; // in megabytes
+    int loaded_tiles;
+    bool shuffle_mode;
+    void init();    
     void clean();
+private: 
+    void cleanDirectory(int directory);
 
 };

@@ -38,7 +38,7 @@ Window::Window(const char* title, int width, int height, bool showgui)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-
+glfwWindowHint(GLFW_REFRESH_RATE, 60);
     window_ = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
     if (!window_)

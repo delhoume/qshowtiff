@@ -89,6 +89,7 @@ static char error_buffer[1024];
     }
 
     void Tiff::close() {
+
         delete [] directory_infos;
         TIFFClose(_tifin);       
     }
@@ -135,9 +136,13 @@ switch(subfiletype) {
         if (!setDirectory(directory) || column < 0 || row < 0 || column >= di->image_columns || row >= di->image_rows)
             return nullptr;
         unsigned char* data = new unsigned char[di->tile_width * di->tile_height * 4];
+        if (!data) {
+            snprintf(error_buffer, 1024, "Error allocating data for tile %dx%d", column, row);
+            return nullptr;
+        } 
         boolean ok = false;
         if (di->is_tiled) {
-                ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
+            ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
         } else {
             ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)data) == 1;
         }      
