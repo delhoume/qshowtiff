@@ -28,6 +28,7 @@ public:
     bool show_numbers;    
     bool full_image_mode;
     bool show_over_limit_tiles;
+    bool show_image_rect;
     float** heatmaps;   
      float** mini_heatmaps;
      int* mini_heatmaps_widths;     
