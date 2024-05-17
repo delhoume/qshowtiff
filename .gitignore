@@ -12,3 +12,5 @@ src/imgui.ini
 *.o
 bin/qshowtiff
 imgui
+/.idea
+/.vscode

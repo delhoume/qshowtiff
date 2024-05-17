@@ -20,7 +20,7 @@ TiffViewer::TiffViewer(int width, int height)
     show_borders(false),      
     show_numbers(false),    
     full_image_mode(false),
-    show_over_limit_tiles(true),
+    show_over_limit_tiles(false),
     show_image_rect(true),
     heatmaps(nullptr),
     mini_heatmaps(nullptr),
@@ -52,16 +52,25 @@ void TiffViewer::display()  {
 #define TILE_BORDER_COLOR IM_COL32(255, 0, 0, 255)
 #define IMAGE_BORDER_COLOR IM_COL32(0, 0, 255, 255)
 
+const int checker_size = 256;
+
 void TiffViewer::displayTiles() {
     if (the_tiff.isLoaded()) {
         TiffDirectory* di = the_tiff.getDirectoryInfo(current_directory);
        if (di->isValid()) {
-            ImGui::SetNextWindowPos(ImVec2(0, 0));
+           ImGui::SetNextWindowPos(ImVec2(0, 0));
             ImGui::Begin("BCKGND", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | 
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImVec2 display_size = ImGui::GetIO().DisplaySize;
             ImGui::SetWindowSize(display_size);
-            // TODO: factorize code for both modes
+            for (int y = 0; y < display_size.y; y += checker_size) {
+                for (int x = 0; x < display_size.x; x += checker_size) {
+                    ImVec2 topleft(x, y);
+                    ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)nomem, ImVec2(x, y), ImVec2(x + checker_size, y + checker_size));
+              }
+            }
+                       
+           // TODO: factorize code for both modes
             int displayed_tiles_x = MIN(di->image_columns - current_columns[current_directory], visible_columns[current_directory]);
             int displayed_tiles_y = MIN(di->image_rows - current_rows[current_directory], visible_rows[current_directory]);
             if (full_image_mode) {
@@ -435,10 +444,10 @@ void TiffViewer::init() {
         visible_rows[d] = 1;
     }
     // 
-    int nomem_size = 32;
-    int checker_size  = nomem_size / 4;
-    unsigned char gray1[4] = { 0xff, 0xff, 0xff, 0xff };
-     unsigned char gray2[4] = { 0x077, 0x77, 0x77, 0xff };
+    int nomem_size = 128;
+    int checker_size  = nomem_size / 2;
+    unsigned char gray1[4] = { 0xee, 0xee, 0xee, 0xff };
+     unsigned char gray2[4] = { 0xcc, 0xcc, 0xcc, 0xff };
     unsigned char* data = new unsigned char[nomem_size * nomem_size * 4]; 
 
     for (int y = 0; y < nomem_size; ++y) {
