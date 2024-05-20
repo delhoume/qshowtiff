@@ -5,10 +5,16 @@
 #include <utility>
 #include <random>
 
+using namespace std;
+
 #define STB_IMAGE_RESIZE2_IMPLEMENTATION
 #include "stb_image_resize2.h"
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#include "stb_image.h"
+
+#include "nomem.h"
+#include "background.h"
 
 #include <implot.h>
 
@@ -20,7 +26,7 @@ TiffViewer::TiffViewer(int width, int height)
     show_borders(false),      
     show_numbers(false),    
     full_image_mode(false),
-    show_over_limit_tiles(false),
+    show_over_limit_tiles(true),
     show_image_rect(true),
     heatmaps(nullptr),
     mini_heatmaps(nullptr),
@@ -32,6 +38,7 @@ TiffViewer::TiffViewer(int width, int height)
     current_columns(nullptr),
     current_rows(nullptr),
     nomem(0),
+    background(0),
     memory_limit(1000),
     loaded_tiles(0),
     shuffle_mode(true) {
@@ -52,7 +59,7 @@ void TiffViewer::display()  {
 #define TILE_BORDER_COLOR IM_COL32(255, 0, 0, 255)
 #define IMAGE_BORDER_COLOR IM_COL32(0, 0, 255, 255)
 
-const int checker_size = 256;
+const int background_tile_size = 64;
 
 void TiffViewer::displayTiles() {
     if (the_tiff.isLoaded()) {
@@ -63,10 +70,10 @@ void TiffViewer::displayTiles() {
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImVec2 display_size = ImGui::GetIO().DisplaySize;
             ImGui::SetWindowSize(display_size);
-            for (int y = 0; y < display_size.y; y += checker_size) {
-                for (int x = 0; x < display_size.x; x += checker_size) {
+            for (int y = 0; y < display_size.y; y += background_tile_size) {
+                for (int x = 0; x < display_size.x; x += background_tile_size) {
                     ImVec2 topleft(x, y);
-                    ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)nomem, ImVec2(x, y), ImVec2(x + checker_size, y + checker_size));
+                    ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)background, ImVec2(x, y), ImVec2(x + background_tile_size, y + background_tile_size));
               }
             }
                        
@@ -106,7 +113,7 @@ void TiffViewer::displayTiles() {
                             int tile_index = jj * di->image_columns + ii;
                             if (textures[tile_index] == 0) {
                                 if (show_over_limit_tiles == true) {
-                                    ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)nomem, top_left, bottom_right);
+                                     ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)nomem, top_left, bottom_right);
                                 }
                             } else {          
                                  ImGui::GetWindowDrawList()->AddImage((void *)(intptr_t)textures[tile_index], top_left, bottom_right);
@@ -149,11 +156,18 @@ void TiffViewer::displayTiles() {
                 float real_tile_width = scale * di->tile_width;
                 float real_tile_height = scale* di->tile_height;
 
+                // tile cannot appear larger than original size
+                if (real_tile_width > di->tile_width) real_tile_width = di->tile_width; 
+                if (real_tile_height > di->tile_height) real_tile_height = di->tile_height;
+                
+                total_width = real_tile_width * displayed_tiles_x;
+                total_height = real_tile_height * displayed_tiles_y;
+
                 float real_width = scale * total_width;
                 float real_height = scale * total_height;
 
-                int startx = (display_size.x - real_width) / 2;         
-                int starty = (display_size.y - real_height) / 2;
+                int startx = (display_size.x - total_width) / 2;         
+                int starty = (display_size.y - total_height) / 2;
                              
                 GLuint* textures = tiles[current_directory];
                for (int jj = 0; jj < displayed_tiles_y; ++jj) {
@@ -229,12 +243,11 @@ void TiffViewer::process_imgui() {
             int heat_height = r > 1 ? heatmax_size / r : heatmax_size;
             if (d != current_directory) ImGui::BeginDisabled();
             ImGui::PushItemWidth(heat_width);
-            if (di->is_tiled) {  
-                //if (ImGui::DragIntRange2("Coloadtilelumns", &current_columns[d], &visible_columns[d], 1.0, 0, di->image_columns - 1, "Start: %d", "Width: %d")) update();                 
-                 if(ImGui::SliderInt("Columns", &(visible_columns[d]), 1, di->image_columns)) {
-                    update();
+            if (di->is_tiled) {            
+                if(ImGui::SliderInt("Columns", &visible_columns[d], 1, di->image_columns)) {
+                      update();
                  }
-                if(ImGui::SliderInt("Column", &(current_columns[d]), 0, di->image_columns - 1)) {
+                 if(ImGui::SliderInt("Column", &current_columns[d], 0, di->image_columns - 1)) {
                     update();  
                 }         
             }
@@ -443,22 +456,34 @@ void TiffViewer::init() {
         visible_columns[d] = 1 ;
         visible_rows[d] = 1;
     }
-    // 
-    int nomem_size = 128;
-    int checker_size  = nomem_size / 2;
-    unsigned char gray1[4] = { 0xee, 0xee, 0xee, 0xff };
-     unsigned char gray2[4] = { 0xcc, 0xcc, 0xcc, 0xff };
-    unsigned char* data = new unsigned char[nomem_size * nomem_size * 4]; 
+  
+      int w, h, c;
+      unsigned char* image_data;
+    #if 0     
+    int checker_size  = 64;
+    unsigned char gray1[] = { 0xee, 0xee, 0xee };
+     unsigned char gray2[] = { 0xcc, 0xcc, 0xcc };
+    unsigned char* background_data = new unsigned char[checker_size * checker_size *3]; 
 
-    for (int y = 0; y < nomem_size; ++y) {
+
+    for (int y = 0; y < checker_size; ++y) {
         boolean isYEven = (y % checker_size) > (checker_size / 2);
-        for (int x = 0; x < nomem_size; ++x) {
+        for (int x = 0; x < checker_size; ++x) {
             boolean isXEven = (x % checker_size) > (checker_size / 2);         
-            unsigned char* ptr = data + y * 4 * nomem_size +  4 * x;
-            memcpy(ptr, ((isXEven && isYEven) || (!isXEven && !isYEven)) ? gray1: gray2, 4); 
+            unsigned char* ptr = background_data + y * 3 * checker_size +  3 * x;
+            memcpy(ptr, ((isXEven && isYEven) || (!isXEven && !isYEven)) ? gray1: gray2, 3); 
         }
     }
-    nomem = texture(data, nomem_size, nomem_size);
+
+    stbi_write_png("background.png", checker_size, checker_size,3, background_data, 9 );
+    background = texture(background_data, checker_size, checker_size);
+    #else
+    image_data = stbi_load_from_memory((const stbi_uc*)Background_data, Background_size, &w, &h, &c, 4);
+    if (image_data != nullptr) background = texture(image_data, w, h);
+    #endif
+
+    image_data = stbi_load_from_memory((const stbi_uc*)NoMem_data, NoMem_size, &w, &h, &c, 4);
+        if (image_data != nullptr) nomem = texture(image_data, w, h);
 }
 
 void TiffViewer::resize(int width, int height) {

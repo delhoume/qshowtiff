@@ -19,9 +19,13 @@ IMGUI_DIR = imgui
 IMPLOT_DIR = ../implot
 GLAD_DIR = glad
 SRC_DIR = src
+INCLUDE_DIR = include
 BIN_DIR = bin
+DATA_DIR = data
 
-EXE =$(BIN_DIR)/qshowtiff
+FILE_TO_BINARY=$(IMGUI_DIR)/misc/fonts/binary_to_compressed_c
+
+EXE=$(BIN_DIR)/qshowtiff
 
 SOURCES = $(SRC_DIR)/qshowtiff.cpp 
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
@@ -38,10 +42,12 @@ TIFF_LIBS = -ltiff -lturbojpeg -lz-ng -lzstd -llzma
 GL_LIBS = -lglew -lglfw 
 GL_FLAGS=-DGL_SILENCE_DEPRECATION
 
-CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(IMPLOT_DIR) -I$(GLAD_DIR)/include -I$(SRC_DIR) -I.
+CXXFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(IMPLOT_DIR) -I$(GLAD_DIR)/include -I$(INCLUDE_DIR)
 CXXFLAGS += -g -Wall -Wformat
 CXXFLAGS += $(GL_FLAGS)
 
+
+DATA_HEADERS = $(INCLUDE_DIR)/space_font.h $(INCLUDE_DIR)/nomem.h $(INCLUDE_DIR)/background.h
 
 ##---------------------------------------------------------------------
 ## OPENGL ES
@@ -87,7 +93,7 @@ endif
 ## BUILD RULES
 ##---------------------------------------------------------------------
 
-$(BIN_DIR)/%.o:$(SRC_DIR)/%.cpp
+$(BIN_DIR)/%.o:$(SRC_DIR)/%.cpp $(DATA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(BIN_DIR)/%.o:$(IMGUI_DIR)/%.cpp
@@ -108,9 +114,18 @@ $(BIN_DIR)/%.o:$(GLAD_DIR)/src/glad.c
 all: $(EXE)
 	@echo Build complete for $(ECHO_MESSAGE)
 
-$(EXE): $(OBJS)
+$(INCLUDE_DIR)/space_font.h: $(DATA_DIR)/space_invaders.ttf
+	$(FILE_TO_BINARY) $(DATA_DIR)/space_invaders.ttf SpaceFont > $(INCLUDE_DIR)/space_font.h 
+
+$(INCLUDE_DIR)/nomem.h:$(DATA_DIR)/nomem.jpg
+	$(FILE_TO_BINARY) -nocompress $(DATA_DIR)/nomem.jpg NoMem > $(INCLUDE_DIR)/nomem.h 
+
+$(INCLUDE_DIR)/background.h: $(DATA_DIR)/background.png
+	$(FILE_TO_BINARY) -nocompress $(DATA_DIR)/background.png Background > $(INCLUDE_DIR)/background.h 
+
+$(EXE): $(OBJS) 
 	mkdir -p $(BIN_DIR)
 	$(CXX) -v -o $@ $^ $(CXXFLAGS) $(LIBS)
 
 clean:
-	rm -f $(EXE) $(OBJS)
+	rm -f $(EXE) $(OBJS) $(DATA_HEADERS)

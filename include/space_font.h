@@ -1,7 +1,7 @@
-// File: 'space_invaders.ttf' (19380 bytes)
+// File: 'data/space_invaders.ttf' (19380 bytes)
 // Exported using binary_to_compressed_c.cpp
-static const unsigned int space_font_compressed_size = 6128;
-static const unsigned int space_font_compressed_data[6128/4] =
+static const unsigned int SpaceFont_compressed_size = 6128;
+static const unsigned int SpaceFont_compressed_data[6128/4] =
 {
     0x0000bc57, 0x00000000, 0xb44b0000, 0x00000400, 0x00010037, 0x000a0000, 0x00030080, 0x2f534f20, 0x06960432, 0x0e0000da, 0x2815821c, 0x616d6360, 
     0x54f55970, 0x2c0b829e, 0x030000ac, 0x796c678c, 0x1c2f1d66, 0x301f82f0, 0x3a00009c, 0x616568d8, 0xff105f64, 0x04000090, 0x21238238, 0x10826836, 

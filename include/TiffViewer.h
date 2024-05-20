@@ -38,7 +38,8 @@ public:
     int* visible_rows;
      int* current_columns;
      int* current_rows;
-     GLuint nomem;
+     GLuint nomem;    
+      GLuint background;
     int memory_limit; // in megabytes
     int loaded_tiles;
     bool shuffle_mode;

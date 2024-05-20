@@ -166,8 +166,8 @@ void Window::init_imgui()
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // load Lato font from pre-compiled ttf file
-    io.Fonts->AddFontFromMemoryCompressedTTF(space_font_compressed_data, 
-                                            space_font_compressed_size,
+    io.Fonts->AddFontFromMemoryCompressedTTF(SpaceFont_compressed_data, 
+                                            SpaceFont_compressed_size,
                                              14 * imgui_scale_);
 
     // window style
@@ -242,7 +242,7 @@ void Window::scale_imgui(float scale)
     // reload font
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
-    io.Fonts->AddFontFromMemoryCompressedTTF(space_font_compressed_data, space_font_compressed_size,
+    io.Fonts->AddFontFromMemoryCompressedTTF(SpaceFont_compressed_data, SpaceFont_compressed_size,
                                              14 * content_scale * imgui_scale_);
 
     // trigger font texture regeneration
