@@ -366,8 +366,6 @@ void Window::render_frame()
 
        ImGui::Text("Press '?' for help");
         ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
         instance_->process_imgui();
         ImGui::End();
 
@@ -645,7 +643,6 @@ void Window::screenshot()
 {
     std::stringstream filename{""};
     filename << title_ << std::to_string(screenshot_number_++) << ".png";
-    std::cout << "Save screenshot to " << filename.str() << std::endl;
 
     // allocate buffer
     auto data = new unsigned char[3 * width_ * height_];

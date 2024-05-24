@@ -163,9 +163,6 @@ void TiffViewer::displayTiles() {
                 total_width = real_tile_width * displayed_tiles_x;
                 total_height = real_tile_height * displayed_tiles_y;
 
-                float real_width = scale * total_width;
-                float real_height = scale * total_height;
-
                 int startx = (display_size.x - total_width) / 2;         
                 int starty = (display_size.y - total_height) / 2;
                              
@@ -222,6 +219,9 @@ static bool show_implot_metrics = false;
 void TiffViewer::process_imgui() {
     if (the_tiff.isLoaded()) {
         displayTiles();
+        ImGui::Separator();
+        ImGui::Text("%s", the_tiff.filename);   
+        ImGui::Spacing();
           for (int d = 0; d < the_tiff.num_directories; ++d) {
             ImGui::PushID(d);
             TiffDirectory* di = the_tiff.getDirectoryInfo(d);

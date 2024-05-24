@@ -6,17 +6,24 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr) {}
+Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr), filename(0) {
+      TIFFSetErrorHandler(NULL);
+        TIFFSetErrorHandlerExt(NULL);
+ TIFFSetWarningHandler(NULL);
+ TIFFSetWarningHandlerExt(NULL);
+
+}
 Tiff::~Tiff() { close(); }
 
-boolean Tiff::loadFromFile(const char* filename) {
+boolean Tiff::loadFromFile(const char* name) {
         TIFFOpenOptions *opts = TIFFOpenOptionsAlloc();
         TIFFOpenOptionsSetMaxSingleMemAlloc(opts, 0); // unlimited
-        _tifin = TIFFOpenExt(filename, "rb", opts);
+        _tifin = TIFFOpenExt(name, "rb", opts);
         TIFFOpenOptionsFree(opts);
          if (_tifin) {
             num_directories = TIFFNumberOfDirectories(_tifin);
             current_directory = 0;
+            filename = name;
         }
        return _tifin != nullptr;
      }
@@ -49,6 +56,7 @@ boolean Tiff::loadFromFile(const char* filename) {
         TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
         TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
          TIFFGetFieldDefaulted(tifin, TIFFTAG_COMPRESSION, &compression);
+         isCompressionConfigured =  TIFFIsCODECConfigured(compression);
          if (compression == COMPRESSION_JPEG)
             TIFFGetFieldDefaulted(tifin, TIFFTAG_JPEGQUALITY, &compression_level);
             else if (compression == COMPRESSION_ADOBE_DEFLATE || compression == COMPRESSION_DEFLATE)
@@ -95,31 +103,33 @@ static char error_buffer[1024];
     }
 
     const char* TiffDirectory::compressionDescription() {
-    static char buffer[128];
+    static char buffer[64];   
+    static char description[128];
     switch(compression) {
         case COMPRESSION_ADOBE_DEFLATE:    
         case COMPRESSION_DEFLATE:
-            snprintf(buffer, 32, "Deflate Level %d", compression_level == -1 ? 6 : compression_level);
+            snprintf(buffer, sizeof(buffer), "Deflate Level %d", compression_level == -1 ? 6 : compression_level);
             break;
         case COMPRESSION_JPEG:
-            snprintf(buffer, 128, "Jpeg Level %d",  compression_level);
+            snprintf(buffer, sizeof(buffer), "Jpeg Level %d",  compression_level);
             break;
        case COMPRESSION_NONE:
-            snprintf(buffer, 128, "None");
+            snprintf(buffer, sizeof(buffer), "No compression");
             break;
             case 5:
-             snprintf(buffer, 128, "LZW");
+             snprintf(buffer, sizeof(buffer), "LZW");
             break;
         case 33003:
-        snprintf(buffer, 128, "Aperio jpeg2000 Ycbcr stream");
+        snprintf(buffer, sizeof(buffer), "Aperio jpeg2000 Ycbcr");
             break;
        case 33005:
-        snprintf(buffer, 128, "Aperio jpeg2000 RGB stream");
+        snprintf(buffer, sizeof(buffer), "Aperio jpeg2000 RGB");
             break;
         default:
-          snprintf(buffer, 128, "%d", compression);  
+          snprintf(buffer, sizeof(buffer), "%d", compression);  
     }
-    return buffer;
+    snprintf(description, sizeof(description), "%s %s", buffer, isCompressionConfigured ? "" : "not supported");
+    return description;
   }
 
     const char* TiffDirectory::subfileDescription() {

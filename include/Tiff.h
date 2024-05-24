@@ -27,13 +27,14 @@ class Tiff {
    int num_directories;
    int current_directory;
     TiffDirectory* directory_infos;
+    const char* filename;
   };
 
 class TiffDirectory {
     public:
     TiffDirectory() :  level(-1) {}
-void getInfo(Tiff* tiff);
-boolean isValid() const { return level != -1; }
+    void getInfo(Tiff* tiff);
+    boolean isValid() const { return level != -1; }
     const char* compressionDescription();
     const char* subfileDescription();
     int level;
@@ -41,6 +42,7 @@ boolean isValid() const { return level != -1; }
     int32_t samples_per_pixel;
     int32_t compression;
     int32_t compression_level;
+    boolean isCompressionConfigured;
     boolean is_tiled;
     int subfiletype;
     unsigned int tile_width;
