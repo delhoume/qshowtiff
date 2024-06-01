@@ -45,10 +45,10 @@ class TiffDirectory {
     boolean isCompressionConfigured;
     boolean is_tiled;
     int subfiletype;
-    unsigned int tile_width;
-    unsigned int tile_height;   // also strip_height;
-    unsigned int image_width;
-    unsigned int image_height;
-    unsigned int image_columns;
-    unsigned int image_rows;
+    int tile_width;
+    int tile_height;   // also strip_height;
+    int image_width;
+    int image_height;
+    int image_columns;
+    int image_rows;
 };

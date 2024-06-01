@@ -341,8 +341,8 @@ bool TiffViewer::update() {
 
         // pass 3 load
          loaded_tiles = 0;
-        int max_load = memory_limit * 1000000 / (di->tile_width * di->tile_height * 4);
-        GLuint* ttiles = tiles[current_directory];
+        int max_load = (1000000 / (float)(di->tile_width * di->tile_height * 4)) * memory_limit;
+           GLuint* ttiles = tiles[current_directory];
         float* heatmap = heatmaps != nullptr ? heatmaps[current_directory]  : nullptr;
 
         for (int tt = 0; tt < tiles_to_load.size(); ++tt) {
@@ -505,7 +505,9 @@ int min_width = 32;
 int default_tile_width = 256;
 int default_tile_height = 256;
 
-uint32_t TiffViewer::texture(const unsigned char *data, int width, int height) {
+boolean useTransparency = true;
+
+uint32_t TiffViewer::texture(unsigned char *data, int width, int height) {
     if (data == nullptr)
         return 0;
     GLuint texture_id = 0;
@@ -535,6 +537,10 @@ if (final_width != width || final_height != height) {
         stbir_resize_uint8_linear(data, width, height, 0, newdata, final_width, final_height, 0, (stbir_pixel_layout)4);
         delete[] data;
         data = newdata;
+    }
+    if (useTransparency == false) {
+        for (int i = 0; i < final_width * final_height; ++i)
+          data[i * 4 + 3] = 255;
     }
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, final_width, final_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     delete[] data;

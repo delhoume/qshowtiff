@@ -18,7 +18,7 @@ public:
     bool load(const char* filename);
     bool update(); // when something change
 
-    uint32_t texture(const unsigned char* data, int width, int height);
+    uint32_t texture(unsigned char* data, int width, int height);
     
     Tiff the_tiff;
 

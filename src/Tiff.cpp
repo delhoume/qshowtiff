@@ -69,7 +69,6 @@ boolean Tiff::loadFromFile(const char* name) {
             TIFFGetFieldDefaulted(tifin, TIFFTAG_ROWSPERSTRIP, &tile_height);       
          }
         TIFFGetFieldDefaulted(tifin, TIFFTAG_SUBFILETYPE, &subfiletype);
-
     if (is_tiled) {
         image_columns = image_width / tile_width;
         if (image_width %   tile_width)
