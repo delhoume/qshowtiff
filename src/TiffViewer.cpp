@@ -220,7 +220,7 @@ void TiffViewer::process_imgui() {
     if (the_tiff.isLoaded()) {
         displayTiles();
         ImGui::Separator();
-        ImGui::Text("%s", the_tiff.filename);   
+        ImGui::Text("%s", fname);   
         ImGui::Spacing();
           for (int d = 0; d < the_tiff.num_directories; ++d) {
             ImGui::PushID(d);
@@ -309,8 +309,8 @@ void TiffViewer::process_imgui() {
         if (show_imgui_metrics) ImGui::ShowMetricsWindow(&show_imgui_metrics);
         if (show_implot_metrics) ImPlot::ShowMetricsWindow(&show_implot_metrics);
     } else {
-        ImGui::ShowDemoWindow();
-        ImPlot::ShowDemoWindow();
+        // ImGui::ShowDemoWindow();
+        // ImPlot::ShowDemoWindow();
     }
 }
 
@@ -489,11 +489,20 @@ void TiffViewer::init() {
 void TiffViewer::resize(int width, int height) {
 }
 
+void TiffViewer::drop(int count, const char** paths) {
+            clean();
+    the_tiff.close();
+
+        load(paths[0]);
+    }
+
+
 bool TiffViewer::load(const char *filename) {
     boolean success = the_tiff.loadFromFile(filename);
     if (success) {
         init();
         update();
+        strcpy(fname, filename);
     }
     return success;
 }

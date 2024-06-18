@@ -6,7 +6,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr), filename(0) {
+Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr) {
       TIFFSetErrorHandler(NULL);
         TIFFSetErrorHandlerExt(NULL);
  TIFFSetWarningHandler(NULL);
@@ -23,7 +23,6 @@ boolean Tiff::loadFromFile(const char* name) {
          if (_tifin) {
             num_directories = TIFFNumberOfDirectories(_tifin);
             current_directory = 0;
-            filename = name;
         }
        return _tifin != nullptr;
      }
@@ -39,7 +38,6 @@ boolean Tiff::loadFromFile(const char* name) {
     }
 
     void Tiff::buildDirectoryInfo() {
-        delete [] directory_infos;
         directory_infos = new TiffDirectory[num_directories];
         for(int d = 0; d < num_directories; ++d) {
             TIFFSetDirectory(_tifin, d);
@@ -96,9 +94,10 @@ static char error_buffer[1024];
     }
 
     void Tiff::close() {
-
         delete [] directory_infos;
-        TIFFClose(_tifin);       
+        directory_infos = nullptr;
+        TIFFClose(_tifin); 
+        _tifin = nullptr;      
     }
 
     const char* TiffDirectory::compressionDescription() {

@@ -15,6 +15,7 @@ public:
     void resize(int width, int height) override;
     void keyboard(int key, int code, int action, int mods) override;
 
+    void drop(int count, const char** paths) override;
     bool load(const char* filename);
     bool update(); // when something change
 
@@ -22,6 +23,7 @@ public:
     
     Tiff the_tiff;
 
+char fname[256];
      int current_directory;
      GLuint** tiles;
     bool show_borders;  

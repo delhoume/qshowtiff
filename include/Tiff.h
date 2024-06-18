@@ -27,7 +27,6 @@ class Tiff {
    int num_directories;
    int current_directory;
     TiffDirectory* directory_infos;
-    const char* filename;
   };
 
 class TiffDirectory {
