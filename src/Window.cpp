@@ -338,7 +338,7 @@ int Window::run()
 {
    while (!glfwWindowShouldClose(window_))
     {
-        Window::render_frame();
+         Window::render_frame();
     }
     return EXIT_SUCCESS;
 }

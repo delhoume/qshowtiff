@@ -16,3 +16,6 @@ imgui
 /.vscode
 src/.DS_Store
 .vscode/settings.json
+data/.DS_Store
+/.vscode
+imgui
