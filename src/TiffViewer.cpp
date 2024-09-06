@@ -4,6 +4,7 @@
 #include <vector>
 #include <utility>
 #include <random>
+#include <algorithm>
 
 using namespace std;
 
@@ -25,7 +26,7 @@ TiffViewer::TiffViewer(int width, int height)
      tiles(nullptr),
     show_borders(false),      
     show_numbers(false),    
-    full_image_mode(false),
+    full_image_mode(true),
     show_over_limit_tiles(true),
     show_image_rect(true),
     heatmaps(nullptr),
@@ -39,7 +40,7 @@ TiffViewer::TiffViewer(int width, int height)
     current_rows(nullptr),
     nomem(0),
     background(0),
-    memory_limit(1000),
+    memory_limit(2000), //2gigabytes
     loaded_tiles(0),
     shuffle_mode(true) {
   add_help_item("D", "Open Debug Windows");
@@ -53,9 +54,13 @@ void TiffViewer::display()  {
 
 }
 
+TiffViewer::~TiffViewer() {
+}
 #define MAX(a,b) (a) > (b) ? (a) : (b)
 #define MIN(a,b) (a) > (b) ? (b) : (a)
 
+#define TILE_HORIZONTAL_BORDER_COLOR IM_COL32(255, 0, 0, 255)
+#define TILE_VERTICAL_BORDER_COLOR IM_COL32(255, 0, 0, 255)
 #define TILE_BORDER_COLOR IM_COL32(255, 0, 0, 255)
 #define IMAGE_BORDER_COLOR IM_COL32(0, 0, 255, 255)
 
@@ -126,12 +131,12 @@ void TiffViewer::displayTiles() {
                             }
                         }
                         if (show_borders) {
-                            ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + ii * real_tile_width, starty), ImVec2(startx + ii * real_tile_width, starty + real_tile_height * di->image_rows), TILE_BORDER_COLOR);             
+                                ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + ii * real_tile_width, starty), ImVec2(startx + ii * real_tile_width, starty + real_tile_height * di->image_rows), TILE_VERTICAL_BORDER_COLOR);             
                         }
                     }
                    // show horizontal grid minus last, and text
                     if (show_borders) {
-                        ImGui::GetWindowDrawList()->AddLine(ImVec2(startx, starty + jj * real_tile_height), ImVec2(startx + real_tile_width * di->image_columns, starty + jj * real_tile_height),TILE_BORDER_COLOR);
+                        ImGui::GetWindowDrawList()->AddLine(ImVec2(startx, starty + jj * real_tile_height), ImVec2(startx + real_tile_width * di->image_columns, starty + jj * real_tile_height),TILE_HORIZONTAL_BORDER_COLOR);
                     }
                 }
                 // finish grid
@@ -187,7 +192,7 @@ void TiffViewer::displayTiles() {
                                 ImGui::GetWindowDrawList()->AddText(ImVec2(top_left.x + 5, top_left.y + 5), IM_COL32(255, 255, 255, 255), info);    
                         }
                         if (show_borders) {
-                            ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + ii * real_tile_width, starty), ImVec2(startx + ii * real_tile_width, starty + real_tile_height * displayed_tiles_y), TILE_BORDER_COLOR); 
+                                ImGui::GetWindowDrawList()->AddLine(ImVec2(startx + ii * real_tile_width, starty), ImVec2(startx + ii * real_tile_width, starty + real_tile_height * displayed_tiles_y), TILE_BORDER_COLOR); 
                         }
                     }
                     if (show_borders) {
@@ -233,7 +238,7 @@ void TiffViewer::process_imgui() {
             snprintf(buff, 64, "Directory %d; %d x %d  %s", d, di->image_width, di->image_height, di->subfileDescription());
             ImGui::Separator();
             if (ImGui::RadioButton(buff, &current_directory, d)) update();
-            ImGui::BulletText("%s | %d bps | %d spp", di->compressionDescription(), di->bits_per_sample, di->samples_per_pixel);
+            ImGui::BulletText("%s | %d bps | %d spp | %s", di->compressionDescription(), di->bits_per_sample, di->samples_per_pixel, di->sampleFormatDescription());
             if (di->is_tiled) ImGui::BulletText("tile size %d x %d | %d x %d tiles (%d)", di->tile_width, di->tile_height, di->image_columns, di->image_rows, di->image_columns * di->image_rows);
             else ImGui::BulletText("strip height %d | %d strips", di->tile_height, di->image_rows);   
             
@@ -281,7 +286,7 @@ void TiffViewer::process_imgui() {
             }
             ImGui::PopItemWidth();
             if (d == current_directory) {
-                ImGui::Checkbox("Show tiles borders", &show_borders);               
+                ImGui::Checkbox("Show tiles", &show_borders);               
                 ImGui::SameLine();  ImGui::Checkbox("Show tiles numbers", &show_numbers); 
 
                 ImGui::Checkbox("Full image mode", &full_image_mode); 
@@ -451,12 +456,27 @@ void TiffViewer::init() {
                 mini_heatmaps_widths[d] = 0;    
                 mini_heatmaps_heights[d] = 0;
             }
+        uint64_t one_tile_memory = 4 * di->tile_height * di->tile_width;
+        uint64_t allowed_tiles = memory_limit *  1000000 / one_tile_memory;
+        int square_dms = (int)sqrt(allowed_tiles);
         current_columns[d] = 0;    
-        current_rows[d] = 0;
-        visible_columns[d] = 1 ;
-        visible_rows[d] = 1;
+        current_rows[d] = 0;    
+        // try to show full image
+        if (allowed_tiles  > (di->image_columns * di->image_rows)) {
+            visible_columns[d] = di->image_columns;
+            visible_rows[d] = di->image_rows;
+        } else if (allowed_tiles  > di->image_columns) {
+            visible_columns[d] = di->image_columns;
+            visible_rows[d] = (int)(allowed_tiles / (float)visible_columns[d]);
+        } else {
+            visible_columns[d] = square_dms;
+            visible_rows[d] = square_dms;
+        }
+        if (visible_columns[d] > di->image_columns)
+             visible_columns[d] = di->image_columns;
+        if (visible_rows[d] > di->image_rows)
+             visible_rows[d] = di->image_rows;
     }
-  
       int w, h, c;
       unsigned char* image_data;
     #if 0     

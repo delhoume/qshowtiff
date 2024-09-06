@@ -22,6 +22,8 @@ class Tiff {
      private:
     TIFF* _tifin;
    void buildDirectoryInfo();
+    int previous_strip;
+    unsigned char* full_strip_data;
 
     public:
    int num_directories;
@@ -36,9 +38,11 @@ class TiffDirectory {
     boolean isValid() const { return level != -1; }
     const char* compressionDescription();
     const char* subfileDescription();
+    const char* sampleFormatDescription();
     int level;
     int32_t bits_per_sample;
     int32_t samples_per_pixel;
+    int32_t sample_format;
     int32_t compression;
     int32_t compression_level;
     boolean isCompressionConfigured;

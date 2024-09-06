@@ -1,19 +1,28 @@
 #include <Tiff.h>
 
 #include <iostream>
+#include <limits>
+
 
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-Tiff::Tiff() : _tifin(nullptr), num_directories(0), directory_infos(nullptr) {
-      TIFFSetErrorHandler(NULL);
-        TIFFSetErrorHandlerExt(NULL);
- TIFFSetWarningHandler(NULL);
- TIFFSetWarningHandlerExt(NULL);
+Tiff::Tiff() : _tifin(nullptr), 
+ previous_strip(-1), 
+ full_strip_data(nullptr),
+  num_directories(0), 
+  directory_infos(nullptr) {
+    TIFFSetErrorHandler(NULL);
+    TIFFSetErrorHandlerExt(NULL);
+    TIFFSetWarningHandler(NULL);
+    TIFFSetWarningHandlerExt(NULL);
 
 }
-Tiff::~Tiff() { close(); }
+Tiff::~Tiff() { 
+    delete [] full_strip_data;
+    close(); 
+ }
 
 boolean Tiff::loadFromFile(const char* name) {
         TIFFOpenOptions *opts = TIFFOpenOptionsAlloc();
@@ -31,12 +40,12 @@ boolean Tiff::loadFromFile(const char* name) {
         return _tifin != nullptr;
     }
 
+
     TiffDirectory* Tiff::getDirectoryInfo(int directory) {
         if (directory_infos == nullptr)
             buildDirectoryInfo();
         return (directory >= num_directories) ? nullptr : &directory_infos[directory];
     }
-
     void Tiff::buildDirectoryInfo() {
         directory_infos = new TiffDirectory[num_directories];
         for(int d = 0; d < num_directories; ++d) {
@@ -52,6 +61,7 @@ boolean Tiff::loadFromFile(const char* name) {
         TIFFGetField(tifin, TIFFTAG_IMAGEWIDTH, &image_width);
         TIFFGetField(tifin, TIFFTAG_IMAGELENGTH, &image_height); 
         TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+        TIFFGetFieldDefaulted(tifin, TIFFTAG_SAMPLEFORMAT, &sample_format);
         TIFFGetFieldDefaulted(tifin, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
          TIFFGetFieldDefaulted(tifin, TIFFTAG_COMPRESSION, &compression);
          isCompressionConfigured =  TIFFIsCODECConfigured(compression);
@@ -76,8 +86,10 @@ boolean Tiff::loadFromFile(const char* name) {
         if (image_height %   tile_height)
             ++image_rows;
     } else {
-        tile_width = image_width;
-        image_columns = 1;
+        tile_width = 512;
+        image_columns = image_width / tile_width;
+        if (image_width % tile_width)
+        ++ image_columns;
         image_rows = image_height / tile_height;
         if (image_height % tile_height)
         ++ image_rows;
@@ -132,10 +144,29 @@ static char error_buffer[1024];
 
     const char* TiffDirectory::subfileDescription() {
 switch(subfiletype) {
-    case FILETYPE_REDUCEDIMAGE: return "Reduced"; break;
+    case FILETYPE_REDUCEDIMAGE: return "Reduced image"; break;
    case FILETYPE_PAGE: return "Page"; break;
-   default: return "Normal"; break;
+   default: return "Normal image"; break;
     }
+    }
+
+    const char *TiffDirectory::sampleFormatDescription()
+    {
+        switch (sample_format) {
+        case SAMPLEFORMAT_UINT:
+            return "Unsigned integer"; break;
+        case SAMPLEFORMAT_INT:
+            return "Signed integer"; break;
+        case SAMPLEFORMAT_IEEEFP:
+            return "IEEE floating point"; break;
+        case SAMPLEFORMAT_COMPLEXINT:
+            return "Complex signed integer"; break;
+        case SAMPLEFORMAT_COMPLEXIEEEFP:
+            return "Complex IEEE floating point"; break;
+        case SAMPLEFORMAT_VOID:
+        default:
+            return "Untyped data"; break;
+        }
     }
 
     unsigned char* Tiff::loadTileOrStrip(int directory, int column, int row) {
@@ -144,22 +175,77 @@ switch(subfiletype) {
         if (!setDirectory(directory) || column < 0 || row < 0 || column >= di->image_columns || row >= di->image_rows)
             return nullptr;
         unsigned char* data = new unsigned char[di->tile_width * di->tile_height * 4];
+        for(int idx = 0; idx < di->tile_width * di->tile_height * 4;  ++idx) memset(&data[idx], 255, 1);
         if (!data) {
             snprintf(error_buffer, 1024, "Error allocating data for tile %dx%d", column, row);
             return nullptr;
         } 
         boolean ok = false;
         if (di->is_tiled) {
-            ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;
+                if (di->sample_format == SAMPLEFORMAT_IEEEFP && di->bits_per_sample == 32) {
+                    // TODO use same buffer
+                    float* fdata = (float*)data;
+                    auto tilenum  = TIFFComputeTile(_tifin, column * di->tile_width, row * di->tile_height, 0, 0);
+                    ok = TIFFReadEncodedTile(_tifin, tilenum, fdata, di->tile_width * di->tile_height * 4);
+                    if (ok) {
+                        float fmin = std::numeric_limits<float>::max();
+                        float fmax = std::numeric_limits<float>::min();
+                        for (int idx = 0; idx < di->tile_width * di->tile_height; ++idx) {
+                            int value = fdata[idx];
+                            if (value < fmin) fmin = value;
+                            if (value > fmax) fmax = value; 
+                        }
+                        for (int idx = 0; idx < di->tile_width * di->tile_height; ++idx) {
+                            unsigned char value = (unsigned char)(int)(255 * (fdata[idx] - fmin / (fmax - fmin)));
+                            data[idx * 4 + 0] = value;
+                            data[idx * 4 + 1] = value;
+                            data[idx * 4 + 2] = value;
+                            data[idx * 4 + 3] = 255; 
+                        }
+                     }
+                } else if (di->sample_format == SAMPLEFORMAT_UINT && di->bits_per_sample == 2) {
+                    // TODO use same buffer
+                    uint16_t* idata = new uint16_t[di->tile_width * di->tile_height];
+                    auto tilenum  = TIFFComputeTile(_tifin, column * di->tile_width, row * di->tile_height, 0, 0);
+                    ok = TIFFReadEncodedTile(_tifin, tilenum, idata, di->tile_width * di->tile_height * 4);
+                    if (ok) {
+                        uint16_t fmin = std::numeric_limits<uint16_t>::max();
+                        uint16_t fmax = std::numeric_limits<uint16_t>::min();
+                        for (int idx = 0; idx < di->tile_width * di->tile_height; ++idx) {
+                            int value = idata[idx];
+                            if (value < fmin) fmin = value;
+                            if (value > fmax) fmax = value; 
+                        }
+                        for (int idx = 0; idx < di->tile_width * di->tile_height; ++idx) {
+                            unsigned char value = (unsigned char)(int)(255 * (idata[idx] - fmin / (fmax - fmin)));
+                            data[idx * 4 + 0] = value;
+                            data[idx * 4 + 1] = value;
+                            data[idx * 4 + 2] = value;
+                            data[idx * 4 + 3] = 255; 
+                        }
+                        delete [] idata;
+                     }
+                } else {
+                    ok = TIFFReadRGBATile(_tifin, column * di->tile_width, row * di->tile_height, (uint32_t *)data) == 1;       
+                    if (ok) stbi__vertical_flip(data, di->tile_width, di->tile_height, 4);
+                }
         } else {
-            ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)data) == 1;
+            // cache
+           if (previous_strip != row) {
+                delete [] full_strip_data; 
+                full_strip_data = new unsigned char[di->image_width * di->tile_height * 4];
+                ok = TIFFReadRGBAStrip(_tifin, row * di->tile_height, (uint32_t *)full_strip_data) == 1;
+               if (ok) {
+                  stbi__vertical_flip(full_strip_data, di->image_width, di->tile_height, 4);
+                }
+                previous_strip = row;
+            } // copy to data
+            unsigned char* start_pos = full_strip_data + column * di->tile_width * 4;
+            for (int y = 0; y < di->tile_height; ++y) {
+                memcpy(data + di->tile_width * 4 * y, start_pos, di->tile_width * 4);
+                start_pos += di->image_width * 4;
+            }
         }      
-        if (ok) stbi__vertical_flip(data, di->tile_width, di->tile_height,4);
-        else {
-            snprintf(error_buffer, 1024, "Error reading %s %dx%d", di->is_tiled ? "tile": "strip", column, row);
-            delete [] data;
-            data = 0;
-        }
         return data;
     }
  

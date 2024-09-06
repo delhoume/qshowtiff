@@ -8,8 +8,8 @@
 class TiffViewer : public pmp::Window {
 public:
     TiffViewer(int width, int height);
-
-    void display() override;;
+    virtual ~TiffViewer();
+    void display() override;
     void process_imgui() override;
     void displayTiles();
     void resize(int width, int height) override;
@@ -49,5 +49,4 @@ char fname[256];
     void clean();
 private: 
     void cleanDirectory(int directory);
-
 };
